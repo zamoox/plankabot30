@@ -1,7 +1,20 @@
 const { Telegraf } = require('telegraf');
 const mongoose = require('mongoose');
-const cron = require('node-cron'); // Не забудьте: npm install node-cron
+const cron = require('node-cron'); 
+const http = require('http');
 require('dotenv').config();
+
+
+// Render автоматично передає номер порту через змінну оточення PORT
+const PORT = process.env.PORT || 3000;
+
+// Створюємо міні-сервер, який просто каже "Я живий"
+http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end('Bot is running!');
+}).listen(PORT, () => {
+    console.log(`✅ Веб-сервер запущено на порту ${PORT}`);
+});
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
