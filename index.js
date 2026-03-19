@@ -75,24 +75,6 @@ const getGopStyleInsult = () => {
     return phrases[Math.floor(Math.random() * phrases.length)];
 };
 
-bot.use(async (ctx, next) => {
-    // Перевіряємо, чи це текстове повідомлення
-    if (ctx.message) {
-        const userId = ctx.from.id;
-        const username = ctx.from.username || ctx.from.first_name;
-        const text = ctx.message.text || "[Медіа/Інше]";
-
-        console.log(`--- 📩 Нове повідомлення ---`);
-        console.log(`Від: ${username} (ID: ${userId})`);
-        console.log(`Текст: ${text}`);
-        console.log(`База даних: ${mongoose.connection.name}`); // Перевірка, куди пишемо
-        console.log(`---------------------------`);
-    }
-    
-    // Обов'язково викликаємо next(), щоб бот пішов далі до наступних обробників
-    return next(); 
-});
-
 // --- 5. ОБРОБКА ВІДЕО ---
 bot.on(['video', 'video_note'], async (ctx) => {
     const video = ctx.message.video || ctx.message.video_note;
