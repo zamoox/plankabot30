@@ -1,14 +1,10 @@
 const { Telegraf } = require('telegraf');
 const mongoose = require('mongoose');
-const cron = require('node-cron'); 
 const http = require('http');
 require('dotenv').config();
 
-
-// Render автоматично передає номер порту через змінну оточення PORT
+// --- 1. НАЛАШТУВАННЯ ПОРТУ ТА СЕРВЕРА (для Render) ---
 const PORT = process.env.PORT || 3000;
-
-// Створюємо міні-сервер, який просто каже "Я живий"
 http.createServer((req, res) => {
     res.writeHead(200);
     res.end('Bot is running!');
@@ -16,123 +12,156 @@ http.createServer((req, res) => {
     console.log(`✅ Веб-сервер запущено на порту ${PORT}`);
 });
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+// --- 2. ВИЗНАЧЕННЯ РЕЖИМУ (Локально чи Сервер) ---
+// Якщо в .env є TEST_BOT_TOKEN — ми в режимі розробки
 
-// 1. ПІДКЛЮЧЕННЯ ДО МОНГО
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('✅ База даних підключена!'))
+const testMode = false; // test or prod
+
+const { token, mongoUri } = testMode ? 
+{ token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
+{ token: process.env.BOT_TOKEN, mongoUri: process.env.MONGO_URI};
+
+const bot = new Telegraf(token);
+
+// --- 3. ПІДКЛЮЧЕННЯ ДО БД ---
+mongoose.connect(mongoUri)
+    .then(() => console.log(`✅ БД підключена: ${testMode ? 'TEST' : 'PRODUCTION'}`))
     .catch(err => console.error('❌ Помилка БД:', err));
 
-// Схема користувача (що ми зберігаємо)
+// Схема користувача
 const userSchema = new mongoose.Schema({
     userId: { type: Number, unique: true },
     name: String,
-    completed: { type: Number, default: 0 }
+    completed: { type: Number, default: 0 },
+    totalSeconds: { type: Number, default: 0 }
 });
 const User = mongoose.model('User', userSchema);
 
-// 2. ЛОГІКА СЕКУНД (Старт 19 березня 2026)
-function getTargetToday() {
-    const start = new Date(2026, 2, 19);
-    const today = new Date();
-    const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
-    return 30 + (Math.max(0, diff) * 5);
-}
+// --- 4. ДОПОМІЖНІ ФУНКЦІЇ ---
 
-// Функція для "гоп-стоп" коментарів
-const getGopStyleInsult = () => {
-    const phrases = [
-        "Чуєш, ти шо, на приколі? Де решта секунд? 🤨",
-        "Слишиш, це шо за фізкультура для малят? Давай по-нормальному!",
-        "Ти кому це фуфло впарюєш? навіть 30 секунд не було — не пацан (чи не пацанка)!",
-        "Шось ти слабо газуєш, дядя. Сімки-вісімки не канають, давай повну дистанцію!"
-    ];
-    return phrases[Math.floor(Math.random() * phrases.length)];
-};
-
-// Допоміжна функція: скільки днів пройшло від старту (включаючи сьогоднішній)
+// Скільки днів пройшло від старту
 const getDaysPassed = () => {
     const start = new Date(2026, 2, 19); // 19 березня 2026
     const today = new Date();
     const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
-    return diff + 1; // +1, щоб у перший день результат був 1
-}
+    return Math.max(1, diff + 1);
+};
 
+// Ціль у секундах на сьогодні
+const getTargetToday = () => {
+    const days = getDaysPassed();
+    return 30 + (Math.max(0, days - 1) * 5);
+};
+
+// Функція-обгортка для відповідей (додає префікс у тесті)
+const sendReply = (ctx, text, extra = {}) => {
+    const prefix = testMode ? '🛠 [TEST MODE]\n' : '';
+    // Виправляємо помилку: якщо extra не об'єкт (наприклад, Markdown), обробляємо це
+    const options = typeof extra === 'string' ? { parse_mode: extra } : extra;
+    return ctx.reply(prefix + text, { parse_mode: 'Markdown', ...options });
+};
+
+const getGopStyleInsult = () => {
+    const phrases = [
+        "Чуєш, ти шо, на приколі? Де решта секунд? 🤨",
+        "Слишиш, це шо за фізкультура для малят?",
+        "Ти кому це фуфло впарюєш? Навіть 30 сек не було — не пацан!",
+        "Шось ти слабо газуєш, дядя. Сімки-вісімки не канають!"
+    ];
+    return phrases[Math.floor(Math.random() * phrases.length)];
+};
+
+// --- 5. ОБРОБКА ВІДЕО ---
 bot.on(['video', 'video_note'], async (ctx) => {
     const video = ctx.message.video || ctx.message.video_note;
     const duration = video.duration; 
     const target = getTargetToday(); 
-    const daysPassed = getDaysPassed(); // Максимально дозволена кількість днів на сьогодні
+    const daysPassed = getDaysPassed();
     const userId = ctx.from.id;
     const userName = ctx.from.first_name;
 
-    // 1. ПЕРЕВІРКА НА "ГОП-СТОП" (менше 30 сек)
+    // 1. Перевірка на "гоп-стоп"
     if (duration < 30) {
-        return ctx.reply(`🤬 ${getGopStyleInsult()} (${duration} сек — це несерйозно)`);
+        return sendReply(ctx, `🤬 ${getGopStyleInsult()} (${duration} сек — це несерйозно)`);
     }
 
-    // 2. ПЕРЕВІРКА ЛІМІТУ ДНІВ
-    // Спочатку знайдемо юзера в базі
+    // 2. Перевірка ліміту днів
     let user = await User.findOne({ userId });
     const currentCompleted = user ? user.completed : 0;
 
     if (currentCompleted >= daysPassed) {
-        return ctx.reply(`✋ Гальмуй, ${userName}! Ти вже здав план на сьогодні (${currentCompleted}/${daysPassed} дн.). \nПриходь завтра, не наглій!`);
+        return sendReply(ctx, `✋ Гальмуй, ${userName}! Ти вже здав план на сьогодні (${currentCompleted}/${daysPassed} дн.). \nПриходь завтра!`);
     }
 
     const diff = Math.abs(duration - target);
     
-    // Функція для запису
-    const saveProgress = async () => {
+    // Функція для запису в базу
+    const saveProgress = async (sec) => {
         return await User.findOneAndUpdate(
             { userId },
-            { $set: { name: userName }, $inc: { completed: 1 } },
+            { 
+                $set: { name: userName }, 
+                $inc: { completed: 1, totalSeconds: sec } 
+            },
             { upsert: true, new: true }
         );
     };
 
     if (diff <= 5) {
-        const updatedUser = await saveProgress();
-        ctx.reply(`✅ Красава! Чітко в таймінг. \nТвій результат: ${updatedUser.completed}/${daysPassed} дн. Планка виконана! 🦾`);
+        const updatedUser = await saveProgress(duration);
+        sendReply(ctx, `✅ Красава! Чітко в таймінг. \nТвій результат: ${updatedUser.completed}/${daysPassed} дн. \nВсього вистояно: ${updatedUser.totalSeconds} сек. 🦾`);
     } else if (duration < target) {
-        ctx.reply(`⚠️ Малувато буде! Сьогодні треба було ${target} сек, а в тебе тільки ${duration}. Не халяв, дожимай!`);
+        sendReply(ctx, `⚠️ Малувато буде! Треба було ${target} сек, а в тебе ${duration}. Не халяв!`);
     } else {
-        const updatedUser = await saveProgress();
-        ctx.reply(`🔥 Ого, машина! Перевиконав план (${duration} сек). Зараховано! \nТвій результат: ${updatedUser.completed}/${daysPassed} дн.`);
+        const updatedUser = await saveProgress(duration);
+        sendReply(ctx, `🔥 Ого, машина! Перевиконав план (${duration} сек). Зараховано! \nВсього: ${updatedUser.totalSeconds} сек.`);
     }
 });
 
-// 4. ДАШБОРД /stats
+// --- 6. КОМАНДИ ---
+
 bot.command('stats', async (ctx) => {
-    const target = getTargetToday();
-    const users = await User.find().sort({ completed: -1 });
+    try {
+        const target = getTargetToday();
+        const daysPassed = getDaysPassed();
+        const users = await User.find().sort({ totalSeconds: -1, completed: -1 });
 
-    let msg = `📊 **СТАТУС ЧЕЛЕНДЖУ**\n`;
-    msg += `⏱ Сьогоднішня ціль: **${target} сек**\n`;
-    msg += `--------------------------\n`;
+        let msg = `📊 **СТАТУС ЧЕЛЕНДЖУ** (День ${daysPassed})\n`;
+        msg += `⏱ Сьогоднішня ціль: **${target} сек**\n`;
+        msg += `--------------------------\n`;
 
-    users.forEach((u, i) => {
-        const icon = i === 0 ? '🥇' : i === 1 ? '🥈' : '👤';
-        msg += `${icon} ${u.name}: ${u.completed} дн.\n`;
-    });
+        if (users.length === 0) {
+            msg += "Поки що ніхто не здав відео.";
+        } else {
+            users.forEach((u, i) => {
+                const icon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '👤';
+                msg += `${icon} **${u.name}**\n└ Днів: ${u.completed}/${daysPassed} | Всього: ${u.totalSeconds} сек.\n\n`;
+            });
+        }
 
-    ctx.reply(msg, { parse_mode: 'Markdown' });
+        sendReply(ctx, msg);
+    } catch (e) {
+        console.error(e);
+        sendReply(ctx, "Помилка при отриманні статистики.");
+    }
 });
 
 bot.command('reset_all', async (ctx) => {
-    // Вкажіть свій ID (дізнатися можна через @userinfobot), щоб будь-хто не обнулив базу
     const ADMIN_ID = 415598130; 
-
-    if (ctx.from.id !== ADMIN_ID) {
-        return ctx.reply("✋ Чуєш, ти куди лізеш?");
-    }
+    if (ctx.from.id !== ADMIN_ID) return sendReply(ctx, "✋ Чуєш, ти куди лізеш?");
 
     try {
-        await User.deleteMany({}); // Видаляє ВСІХ користувачів з бази
-        ctx.reply("🧹 База чиста, як совість пацана. Починаємо челендж з нуля!");
+        await User.deleteMany({});
+        sendReply(ctx, "🧹 База чиста. Починаємо з нуля!");
     } catch (e) {
-        ctx.reply("Помилка при обнуленні.");
+        sendReply(ctx, "Помилка при обнуленні.");
     }
 });
 
+// --- 7. ЗАПУСК ---
 bot.launch();
+console.log(`🚀 Бот стартує в режимі: ${testMode ? 'TEST' : 'PRODUCTION'}`);
+
+// Зупинка бота при завершенні процесу
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
