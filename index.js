@@ -50,21 +50,39 @@ const getGopStyleInsult = () => {
     return phrases[Math.floor(Math.random() * phrases.length)];
 };
 
+// Допоміжна функція: скільки днів пройшло від старту (включаючи сьогоднішній)
+const getDaysPassed = () => {
+    const start = new Date(2026, 2, 19); // 19 березня 2026
+    const today = new Date();
+    const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
+    return diff + 1; // +1, щоб у перший день результат був 1
+}
+
 bot.on(['video', 'video_note'], async (ctx) => {
     const video = ctx.message.video || ctx.message.video_note;
     const duration = video.duration; 
     const target = getTargetToday(); 
+    const daysPassed = getDaysPassed(); // Максимально дозволена кількість днів на сьогодні
     const userId = ctx.from.id;
     const userName = ctx.from.first_name;
 
-    // 1. ПЕРЕВІРКА НА "ГОП-СТОП"
+    // 1. ПЕРЕВІРКА НА "ГОП-СТОП" (менше 30 сек)
     if (duration < 30) {
         return ctx.reply(`🤬 ${getGopStyleInsult()} (${duration} сек — це несерйозно)`);
     }
 
+    // 2. ПЕРЕВІРКА ЛІМІТУ ДНІВ
+    // Спочатку знайдемо юзера в базі
+    let user = await User.findOne({ userId });
+    const currentCompleted = user ? user.completed : 0;
+
+    if (currentCompleted >= daysPassed) {
+        return ctx.reply(`✋ Гальмуй, ${userName}! Ти вже здав план на сьогодні (${currentCompleted}/${daysPassed} дн.). \nПриходь завтра, не наглій!`);
+    }
+
     const diff = Math.abs(duration - target);
     
-    // Функція-помічник для запису в БД, щоб не дублювати код
+    // Функція для запису
     const saveProgress = async () => {
         return await User.findOneAndUpdate(
             { userId },
@@ -74,14 +92,13 @@ bot.on(['video', 'video_note'], async (ctx) => {
     };
 
     if (diff <= 5) {
-        const user = await saveProgress();
-        ctx.reply(`✅ Красава! Чітко в таймінг. \nТвій результат: ${user.completed} дн. Планка на сьогодні виконана! 🦾`);
+        const updatedUser = await saveProgress();
+        ctx.reply(`✅ Красава! Чітко в таймінг. \nТвій результат: ${updatedUser.completed}/${daysPassed} дн. Планка виконана! 🦾`);
     } else if (duration < target) {
         ctx.reply(`⚠️ Малувато буде! Сьогодні треба було ${target} сек, а в тебе тільки ${duration}. Не халяв, дожимай!`);
     } else {
-        // Тепер тут теж є запис у базу!
-        const user = await saveProgress();
-        ctx.reply(`🔥 Ого, машина! Перевиконав план (аж ${duration} сек). Зараховано! \nТвій результат: ${user.completed} дн.`);
+        const updatedUser = await saveProgress();
+        ctx.reply(`🔥 Ого, машина! Перевиконав план (${duration} сек). Зараховано! \nТвій результат: ${updatedUser.completed}/${daysPassed} дн.`);
     }
 });
 
