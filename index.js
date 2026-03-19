@@ -46,8 +46,16 @@ const User = mongoose.model('User', userSchema);
 // Скільки днів пройшло від старту
 const getDaysPassed = () => {
     const start = new Date(2026, 2, 19); // 19 березня 2026
-    const today = new Date();
-    const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
+    
+    // Отримуємо поточну дату саме для Києва
+    const now = new Date();
+    const kyivDate = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Kyiv"}));
+    
+    // Встановлюємо години в 0, щоб рахувати тільки чисті дні
+    kyivDate.setHours(0, 0, 0, 0);
+    start.setHours(0, 0, 0, 0);
+
+    const diff = Math.floor((kyivDate - start) / (1000 * 60 * 60 * 24));
     return Math.max(1, diff + 1);
 };
 
