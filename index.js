@@ -15,7 +15,7 @@ http.createServer((req, res) => {
 // --- 2. ВИЗНАЧЕННЯ РЕЖИМУ (Локально чи Сервер) ---
 // Якщо в .env є TEST_BOT_TOKEN — ми в режимі розробки
 
-const testMode = true; // test or prod
+const testMode = false; // test or prod
 
 const { token, mongoUri } = testMode ? 
 { token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
