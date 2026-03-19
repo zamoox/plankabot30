@@ -15,7 +15,7 @@ http.createServer((req, res) => {
 // --- 2. ВИЗНАЧЕННЯ РЕЖИМУ (Локально чи Сервер) ---
 // Якщо в .env є TEST_BOT_TOKEN — ми в режимі розробки
 
-const testMode = false; // test or prod
+const testMode = true; // test or prod
 
 const { token, mongoUri } = testMode ? 
 { token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
@@ -23,9 +23,13 @@ const { token, mongoUri } = testMode ?
 
 const bot = new Telegraf(token);
 
-// --- 3. ПІДКЛЮЧЕННЯ ДО БД ---
+// 3. Підключення до БД з перевіркою назви бази
 mongoose.connect(mongoUri)
-    .then(() => console.log(`✅ БД підключена: ${testMode ? 'TEST' : 'PRODUCTION'}`))
+    .then(() => {
+        // Виводимо назву бази, щоб точно знати, куди ми підключилися
+        console.log(`✅ БД підключена: ${testMode ? 'TEST' : 'PRODUCTION'}`);
+        console.log(`📂 Назва бази в Atlas: ${mongoose.connection.name}`);
+    })
     .catch(err => console.error('❌ Помилка БД:', err));
 
 // Схема користувача
