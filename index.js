@@ -3,6 +3,9 @@ const mongoose = require('mongoose');
 const http = require('http');
 require('dotenv').config();
 
+
+const testMode = false; // test or prod
+
 // --- 1. НАЛАШТУВАННЯ ПОРТУ ТА СЕРВЕРА (для Render) ---
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
@@ -14,8 +17,6 @@ http.createServer((req, res) => {
 
 // --- 2. ВИЗНАЧЕННЯ РЕЖИМУ (Локально чи Сервер) ---
 // Якщо в .env є TEST_BOT_TOKEN — ми в режимі розробки
-
-const testMode = false; // test or prod
 
 const { token, mongoUri } = testMode ? 
 { token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
@@ -136,9 +137,25 @@ bot.command('stats', async (ctx) => {
     try {
         const target = getTargetToday();
         const daysPassed = getDaysPassed();
-        const users = await User.find().sort({ totalSeconds: -1, completed: -1 });
+        
+        // 1. Отримуємо всіх юзерів з бази
+        let users = await User.find();
 
-        let msg = `📊 **СТАТУС ЧЕЛЕНДЖУ** (День ${daysPassed})\n`;
+        // 2. Сортуємо їх за алгоритмом:
+        users.sort((a, b) => {
+            const aIsDebtor = a.completed < daysPassed;
+            const bIsDebtor = b.completed < daysPassed;
+
+            // ПРАВИЛО 1: Ті, хто НЕ боржники, завжди вище
+            if (aIsDebtor && !bIsDebtor) return 1;
+            if (!aIsDebtor && bIsDebtor) return -1;
+
+            // ПРАВИЛО 2: Якщо обидва "красавчики" (або обидва боржники), 
+            // тоді сортуємо за сумарною кількістю секунд (від більшого до меншого)
+            return b.totalSeconds - a.totalSeconds;
+        });
+
+        let msg = `🏆 **ТАБЛИЦЯ ЛІДЕРІВ** (День ${daysPassed})\n`;
         msg += `⏱ Сьогоднішня ціль: **${target} сек**\n`;
         msg += `--------------------------\n`;
 
@@ -146,8 +163,11 @@ bot.command('stats', async (ctx) => {
             msg += "Поки що ніхто не здав відео.";
         } else {
             users.forEach((u, i) => {
-                const icon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '👤';
-                msg += `${icon} **${u.name}**\n└ Днів: ${u.completed}/${daysPassed} | Всього: ${u.totalSeconds} сек.\n\n`;
+                const isDebtor = u.completed < daysPassed;
+                const icon = isDebtor ? '🔻' : (i === 0 ? '🥇' : i === 1 ? '🥈' : '👤');
+                const status = isDebtor ? `*(Борг: ${daysPassed - u.completed} дн.)*` : '✅';
+                
+                msg += `${icon} **${u.name}** ${status}\n└ Днів: ${u.completed}/${daysPassed} | Всього: ${u.totalSeconds} сек.\n\n`;
             });
         }
 
