@@ -138,20 +138,21 @@ bot.command('stats', async (ctx) => {
         const target = getTargetToday();
         const daysPassed = getDaysPassed();
         
-        // 1. Отримуємо всіх юзерів з бази
+        // 1. Отримуємо всіх юзерів
         let users = await User.find();
 
-        // 2. Сортуємо їх за алгоритмом:
+        // 2. Сортування
         users.sort((a, b) => {
-            const aIsDebtor = a.completed < daysPassed;
-            const bIsDebtor = b.completed < daysPassed;
+            // Боржником вважаємо того, хто виконав МЕНШЕ ніж (daysPassed - 1)
+            // Приклад: сьогодні День 3. Якщо у юзера 2 дні — він КРАСАВА. Якщо 1 день — БОРЖНИК.
+            const aIsDebtor = a.completed < (daysPassed - 1);
+            const bIsDebtor = b.completed < (daysPassed - 1);
 
-            // ПРАВИЛО 1: Ті, хто НЕ боржники, завжди вище
+            // ПРАВИЛО 1: Ті, хто без боргів, завжди вище
             if (aIsDebtor && !bIsDebtor) return 1;
             if (!aIsDebtor && bIsDebtor) return -1;
 
-            // ПРАВИЛО 2: Якщо обидва "красавчики" (або обидва боржники), 
-            // тоді сортуємо за сумарною кількістю секунд (від більшого до меншого)
+            // ПРАВИЛО 2: Сортуємо за секундами (від більшого до меншого)
             return b.totalSeconds - a.totalSeconds;
         });
 
@@ -163,11 +164,23 @@ bot.command('stats', async (ctx) => {
             msg += "Поки що ніхто не здав відео.";
         } else {
             users.forEach((u, i) => {
-                const isDebtor = u.completed < daysPassed;
-                const icon = isDebtor ? '🔻' : (i === 0 ? '🥇' : i === 1 ? '🥈' : '👤');
-                const status = isDebtor ? `*(Борг: ${daysPassed - u.completed} дн.)*` : '✅';
+                const isDebtor = u.completed < (daysPassed - 1);
                 
-                msg += `${icon} **${u.name}** ${status}\n└ Днів: ${u.completed}/${daysPassed} | Всього: ${u.totalSeconds} сек.\n\n`;
+                // Визначаємо іконку: якщо борг — 🔻, якщо ні — медалі за топ-3 або стандартна 👤
+                let icon = '👤';
+                if (isDebtor) {
+                    icon = '🔻';
+                } else {
+                    if (i === 0) icon = '🥇';
+                    else if (i === 1) icon = '🥈';
+                    else if (i === 2) icon = '🥉';
+                }
+
+                // Текст боргу (тільки якщо він є)
+                const debtCount = daysPassed - u.completed;
+                const statusText = isDebtor ? `*(Борг: ${debtCount} дн.)*` : '';
+                
+                msg += `${icon} **${u.name}** ${statusText}\n└ Днів: ${u.completed}/${daysPassed} | Всього: ${u.totalSeconds} сек.\n\n`;
             });
         }
 
