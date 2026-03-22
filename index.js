@@ -191,18 +191,6 @@ bot.command('stats', async (ctx) => {
     }
 });
 
-bot.command('reset_all', async (ctx) => {
-    const ADMIN_ID = 415598130; 
-    if (ctx.from.id !== ADMIN_ID) return sendReply(ctx, "✋ Чуєш, ти куди лізеш?");
-
-    try {
-        await User.deleteMany({});
-        sendReply(ctx, "🧹 База чиста. Починаємо з нуля!");
-    } catch (e) {
-        sendReply(ctx, "Помилка при обнуленні.");
-    }
-});
-
 // --- 7. ЗАПУСК ---
 bot.launch();
 console.log(`🚀 Бот стартує в режимі: ${testMode ? 'TEST' : 'PRODUCTION'}`);
