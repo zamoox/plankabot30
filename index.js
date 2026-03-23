@@ -1,88 +1,26 @@
 const { Telegraf } = require('telegraf');
 const mongoose = require('mongoose');
 const http = require('http');
+const startServer = require('./server');
+const User = require('./models/User');
+const connectDB = require('./config/db');
+const {getDaysPassed, getTargetToday} = require('./utils/dates')
+const {sendReply, getGopStyleInsult} = require('./utils/replies')
 require('dotenv').config();
 
-
-const testMode = false; // test or prod
-
-// --- 1. НАЛАШТУВАННЯ ПОРТУ ТА СЕРВЕРА (для Render) ---
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end('Bot is running!');
-}).listen(PORT, () => {
-    console.log(`✅ Веб-сервер запущено на порту ${PORT}`);
-});
+// --- 1. ІНІЦІАЛІЗАЦІЯ СЕРВЕРУ
+startServer();
 
 // --- 2. ВИЗНАЧЕННЯ РЕЖИМУ (Локально чи Сервер) ---
-// Якщо в .env є TEST_BOT_TOKEN — ми в режимі розробки
+const testMode = true; // test or prod
 
 const { token, mongoUri } = testMode ? 
 { token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
 { token: process.env.BOT_TOKEN, mongoUri: process.env.MONGO_URI};
 
+connectDB(mongoUri);
+
 const bot = new Telegraf(token);
-
-// 3. Підключення до БД з перевіркою назви бази
-mongoose.connect(mongoUri)
-    .then(() => {
-        // Виводимо назву бази, щоб точно знати, куди ми підключилися
-        console.log(`✅ БД підключена: ${testMode ? 'TEST' : 'PRODUCTION'}`);
-        console.log(`📂 Назва бази в Atlas: ${mongoose.connection.name}`);
-    })
-    .catch(err => console.error('❌ Помилка БД:', err));
-
-// Схема користувача
-const userSchema = new mongoose.Schema({
-    userId: { type: Number, unique: true },
-    name: String,
-    completed: { type: Number, default: 0 },
-    totalSeconds: { type: Number, default: 0 }
-});
-const User = mongoose.model('User', userSchema);
-
-// --- 4. ДОПОМІЖНІ ФУНКЦІЇ ---
-
-// Скільки днів пройшло від старту
-const getDaysPassed = () => {
-    const start = new Date(2026, 2, 19); // 19 березня 2026
-    
-    // Отримуємо поточну дату саме для Києва
-    const now = new Date();
-    const kyivDate = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Kyiv"}));
-    
-    // Встановлюємо години в 0, щоб рахувати тільки чисті дні
-    kyivDate.setHours(0, 0, 0, 0);
-    start.setHours(0, 0, 0, 0);
-
-    const diff = Math.floor((kyivDate - start) / (1000 * 60 * 60 * 24));
-    return Math.max(1, diff + 1);
-};
-
-// Ціль у секундах на сьогодні
-const getTargetToday = () => {
-    const days = getDaysPassed();
-    return 30 + (Math.max(0, days - 1) * 5);
-};
-
-// Функція-обгортка для відповідей (додає префікс у тесті)
-const sendReply = (ctx, text, extra = {}) => {
-    const prefix = testMode ? '🛠 [TEST MODE]\n' : '';
-    // Виправляємо помилку: якщо extra не об'єкт (наприклад, Markdown), обробляємо це
-    const options = typeof extra === 'string' ? { parse_mode: extra } : extra;
-    return ctx.reply(prefix + text, { parse_mode: 'Markdown', ...options });
-};
-
-const getGopStyleInsult = () => {
-    const phrases = [
-        "Чуєш, ти шо, на приколі? Де решта секунд? 🤨",
-        "Слишиш, це шо за фізкультура для малят?",
-        "Ти кому це фуфло впарюєш? Навіть 30 сек не було — не пацан!",
-        "Шось ти слабо газуєш, дядя. Сімки-вісімки не канають!"
-    ];
-    return phrases[Math.floor(Math.random() * phrases.length)];
-};
 
 // --- 5. ОБРОБКА ВІДЕО ---
 bot.on(['video', 'video_note'], async (ctx) => {
