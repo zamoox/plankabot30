@@ -1,20 +1,18 @@
 const { Telegraf } = require('telegraf');
-const mongoose = require('mongoose');
-const http = require('http');
+require('dotenv').config();
 const startServer = require('./server');
 const User = require('./models/User');
 const connectDB = require('./config/db');
-const {getDaysPassed, getTargetToday} = require('./utils/dates')
-const {sendReply, getGopStyleInsult} = require('./utils/replies')
-require('dotenv').config();
+const { getDaysPassed, getTargetToday } = require('./utils/dates');
+const { sendReply, getGopStyleInsult } = require('./utils/replies');
 
-// --- 1. ІНІЦІАЛІЗАЦІЯ СЕРВЕРУ
+// 1. ІНІЦІАЛІЗАЦІЯ СЕРВЕРУ
 startServer();
 
-// --- 2. ВИЗНАЧЕННЯ РЕЖИМУ (Локально чи Сервер) ---
-const testMode = true; // test or prod
-
-const { token, mongoUri } = testMode ? 
+// 2. НАЛАШТУВАННЯ РЕЖИМУ
+const testMode = false; // Змінюй на false для продакшену
+ 
+const { token, mongoUri } =  testMode ? 
 { token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
 { token: process.env.BOT_TOKEN, mongoUri: process.env.MONGO_URI};
 
@@ -24,48 +22,77 @@ const bot = new Telegraf(token);
 
 // --- 5. ОБРОБКА ВІДЕО ---
 bot.on(['video', 'video_note'], async (ctx) => {
-    const video = ctx.message.video || ctx.message.video_note;
-    const duration = video.duration; 
-    const target = getTargetToday(); 
-    const daysPassed = getDaysPassed();
-    const userId = ctx.from.id;
-    const userName = ctx.from.first_name;
+    try {
+        const video = ctx.message.video || ctx.message.video_note;
+        const duration = video.duration; 
+        const target = getTargetToday(); 
+        const daysPassed = getDaysPassed();
+        const userId = ctx.from.id;
+        const userName = ctx.from.first_name || 'Анонім';
 
-    // 1. Перевірка на "гоп-стоп"
-    if (duration < 30) {
-        return sendReply(ctx, `🤬 ${getGopStyleInsult()} (${duration} сек — це несерйозно)`);
-    }
+        if (duration < 30) {
+            return sendReply(ctx, `🤬 ${getGopStyleInsult()} (${duration} сек — це несерйозно)`);
+        }
 
-    // 2. Перевірка ліміту днів
-    let user = await User.findOne({ userId });
-    const currentCompleted = user ? user.completed : 0;
+        let user = await User.findOne({ userId });
+        const currentCompleted = user ? user.completed : 0;
 
-    if (currentCompleted >= daysPassed) {
-        return sendReply(ctx, `✋ Гальмуй, ${userName}! Ти вже здав план на сьогодні (${currentCompleted}/${daysPassed} дн.). \nПриходь завтра!`);
-    }
+        if (currentCompleted >= daysPassed) {
+            return sendReply(ctx, `✋ Гальмуй, ${userName}! План на сьогодні вже виконано (${currentCompleted}/${daysPassed} дн.).`);
+        }
 
-    const diff = Math.abs(duration - target);
-    
-    // Функція для запису в базу
-    const saveProgress = async (sec) => {
-        return await User.findOneAndUpdate(
-            { userId },
-            { 
-                $set: { name: userName }, 
-                $inc: { completed: 1, totalSeconds: sec } 
-            },
-            { upsert: true, new: true }
-        );
-    };
+        // Визначаємо, чи є борг 2+ дні на момент завантаження
+        const isCurrentlyDebtor = (daysPassed - currentCompleted) >= 2;
 
-    if (diff <= 5) {
-        const updatedUser = await saveProgress(duration);
-        sendReply(ctx, `✅ Красава! Чітко в таймінг. \nТвій результат: ${updatedUser.completed}/${daysPassed} дн. \nВсього вистояно: ${updatedUser.totalSeconds} сек. 🦾`);
-    } else if (duration < target) {
-        sendReply(ctx, `⚠️ Малувато буде! Треба було ${target} сек, а в тебе ${duration}. Не халяв!`);
-    } else {
-        const updatedUser = await saveProgress(duration);
-        sendReply(ctx, `🔥 Ого, машина! Перевиконав план (${duration} сек). Зараховано! \nВсього: ${updatedUser.totalSeconds} сек.`);
+        const saveProgress = async (sec) => {
+            // Визначаємо новий стрік: якщо борг — починаємо з 1, якщо ні — інкрементуємо існуючий
+            let newStreak = user && !isCurrentlyDebtor ? (user.currentStreak || 0) + 1 : 1;
+            
+            const update = {
+                $set: { 
+                    name: userName,
+                    currentStreak: newStreak
+                },
+                $inc: { 
+                    completed: 1, 
+                    totalSeconds: sec
+                }
+            };
+            
+            // Якщо людина завантажує відео з боргом — мітка Broken назавжди
+            if (isCurrentlyDebtor || (user && user.isBroken)) {
+                update.$set.isBroken = true;
+            }
+
+            const updated = await User.findOneAndUpdate(
+                { userId },
+                update,
+                { upsert: true, new: true }
+            );
+
+            // Оновлюємо рекорд
+            if (updated.currentStreak > (updated.maxStreak || 0)) {
+                await User.updateOne({ userId: updated.userId }, { $set: { maxStreak: updated.currentStreak } });
+            }
+            return updated;
+        };
+
+        const diff = Math.abs(duration - target);
+
+        if (diff <= 5 || duration >= target) {
+            const updatedUser = await saveProgress(duration);
+            const statusMsg = duration >= target ? `🔥 Ого, машина! Перевиконав план.` : `✅ Красава! Чітко в таймінг.`;
+            
+            // Визначаємо, чи виводити вогник у повідомленні про успіх
+            const fire = !updatedUser.isBroken ? '🔥' : '🦾';
+            
+            sendReply(ctx, `${statusMsg} \nТвій результат: ${updatedUser.completed}/${daysPassed} дн. \nСтрік: ${updatedUser.currentStreak} ${fire} | Всього: ${updatedUser.totalSeconds} сек.`);
+        } else {
+            sendReply(ctx, `⚠️ Малувато! Треба було ${target} сек, а в тебе ${duration}. Не халяв!`);
+        }
+    } catch (e) {
+        console.error('Помилка при збереженні відео:', e);
+        sendReply(ctx, "❌ Сталася помилка при збереженні відео. Можливо, потрібно оновити схему бази даних.");
     }
 });
 
@@ -73,40 +100,52 @@ bot.on(['video', 'video_note'], async (ctx) => {
 
 bot.command('stats', async (ctx) => {
     try {
-        const target = getTargetToday();
         const daysPassed = getDaysPassed();
+        const targetToday = getTargetToday();
         
-        // 1. Отримуємо всіх юзерів
         let users = await User.find();
 
-        // 2. Сортування
-        users.sort((a, b) => {
-            // Боржником вважаємо того, хто виконав МЕНШЕ ніж (daysPassed - 1)
-            // Приклад: сьогодні День 3. Якщо у юзера 2 дні — він КРАСАВА. Якщо 1 день — БОРЖНИК.
-            const aIsDebtor = a.completed < (daysPassed - 1);
-            const bIsDebtor = b.completed < (daysPassed - 1);
+        // --- ПЕРЕВІРКА НА "ДРОП" СТРІКУ ---
+        // Якщо настав новий день, а борг не закрито — обнуляємо стрік і забираємо вогник
+        for (let u of users) {
+            const diff = daysPassed - u.completed;
+            if (diff >= 2 && (u.currentStreak > 0 || !u.isBroken)) {
+                await User.updateOne(
+                    { _id: u._id }, 
+                    { $set: { currentStreak: 0, isBroken: true } }
+                );
+                // Оновлюємо локальний об'єкт для коректного відображення в списку
+                u.currentStreak = 0;
+                u.isBroken = true;
+            }
+        }
 
-            // ПРАВИЛО 1: Ті, хто без боргів, завжди вище
+        // Сортування: не-боржники вище, далі за секундами
+        users.sort((a, b) => {
+            const aIsDebtor = (daysPassed - a.completed) >= 2;
+            const bIsDebtor = (daysPassed - b.completed) >= 2;
             if (aIsDebtor && !bIsDebtor) return 1;
             if (!aIsDebtor && bIsDebtor) return -1;
-
-            // ПРАВИЛО 2: Сортуємо за секундами (від більшого до меншого)
             return b.totalSeconds - a.totalSeconds;
         });
 
         let msg = `🏆 **ТАБЛИЦЯ ЛІДЕРІВ** (День ${daysPassed})\n`;
-        msg += `⏱ Сьогоднішня ціль: **${target} сек**\n`;
+        msg += `⏱ Ціль: **${targetToday} сек**\n`;
         msg += `--------------------------\n`;
 
         if (users.length === 0) {
             msg += "Поки що ніхто не здав відео.";
         } else {
             users.forEach((u, i) => {
-                const isDebtor = u.completed < (daysPassed - 1);
+                const diff = daysPassed - u.completed;
+                const isTodayDebtor = diff >= 2;
                 
-                // Визначаємо іконку: якщо борг — 🔻, якщо ні — медалі за топ-3 або стандартна 👤
+                // Стрік з вогником тільки якщо не Broken
+                const streakVal = u.currentStreak || 0;
+                const streakFire = !u.isBroken ? ` ${streakVal} 🔥` : ` ${streakVal}`;
+                
                 let icon = '👤';
-                if (isDebtor) {
+                if (isTodayDebtor) {
                     icon = '🔻';
                 } else {
                     if (i === 0) icon = '🥇';
@@ -114,18 +153,20 @@ bot.command('stats', async (ctx) => {
                     else if (i === 2) icon = '🥉';
                 }
 
-                // Текст боргу (тільки якщо він є)
-                const debtCount = daysPassed - u.completed;
-                const statusText = isDebtor ? `*(Борг: ${debtCount} дн.)*` : '';
+                const statusText = isTodayDebtor ? ` *(Борг: ${diff} дн.)*` : '';
                 
-                msg += `${icon} **${u.name}** ${statusText}\n└ Днів: ${u.completed}/${daysPassed} | Всього: ${u.totalSeconds} сек.\n\n`;
+                msg += `${icon} **${u.name || 'Анонім'}**${statusText}\n`;
+                msg += `└ Днів: ${u.completed}/${daysPassed} | Стрік:${streakFire}\n`;
+                msg += `└ Рекорд: ${u.maxStreak || 0} | Всього: ${u.totalSeconds} сек.\n\n`;
             });
         }
 
-        sendReply(ctx, msg);
+        const prefix = typeof testMode !== 'undefined' && testMode ? '🛠 [TEST MODE]\n' : '';
+        await ctx.reply(prefix + msg, { parse_mode: 'Markdown' });
+
     } catch (e) {
         console.error(e);
-        sendReply(ctx, "Помилка при отриманні статистики.");
+        ctx.reply("❌ Помилка статистики.");
     }
 });
 
@@ -133,6 +174,5 @@ bot.command('stats', async (ctx) => {
 bot.launch();
 console.log(`🚀 Бот стартує в режимі: ${testMode ? 'TEST' : 'PRODUCTION'}`);
 
-// Зупинка бота при завершенні процесу
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
