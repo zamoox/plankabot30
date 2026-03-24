@@ -10,10 +10,9 @@ const getGopStyleInsult = () => {
 
 // Функція-обгортка для відповідей (додає префікс у тесті)
 const sendReply = (ctx, text, extra = {}) => {
-    const prefix = testMode ? '🛠 [TEST MODE]\n' : '';
     // Виправляємо помилку: якщо extra не об'єкт (наприклад, Markdown), обробляємо це
     const options = typeof extra === 'string' ? { parse_mode: extra } : extra;
-    return ctx.reply(prefix + text, { parse_mode: 'Markdown', ...options });
+    return ctx.reply(text, { parse_mode: 'Markdown', ...options });
 };
 
 module.exports = { getGopStyleInsult, sendReply };
