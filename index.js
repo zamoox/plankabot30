@@ -210,6 +210,56 @@ bot.command('guide', (ctx) => {
     }
 });
 
+bot.command('remind', async (ctx) => {
+    try {
+        const daysPassed = getDaysPassed();
+        const targetToday = getTargetToday();
+        const users = await User.find();
+
+        // 1. Фільтруємо тих, хто ще не здав сьогодні (боржники)
+        const debtors = users.filter(u => u.completed < daysPassed);
+
+        if (debtors.length === 0) {
+            return ctx.reply("😎 **Всі красунчики!** Сьогодні боржників немає. Всі вогники на місці.");
+        }
+
+        let msg = `🔔 **ЗАГАЛЬНЕ НАГАДУВАННЯ**\n`;
+        msg += `⏱ Ціль на сьогодні: **${targetToday} сек**\n`;
+        msg += `--------------------------\n\n`;
+
+        let criticalList = ""; // Ті, хто ось-ось втратять вогник (diff === 1)
+        let brokenList = "";   // Ті, хто вже боржники (diff >= 2)
+
+        debtors.forEach(u => {
+            const diff = daysPassed - u.completed;
+            // Створюємо клікабельне ім'я (тег) через userId
+            const userTag = `[${u.name || 'Анонім'}](tg://user?id=${u.userId})`;
+
+            if (diff >= 2) {
+                brokenList += `🔻 ${userTag} — борг ${diff} дн. (Вогник 🔥 втрачено)\n`;
+            } else if (diff === 1) {
+                criticalList += `⚠️ ${userTag} — **ОСТАННІЙ ШАНС** зберегти вогник!\n`;
+            }
+        });
+
+        if (criticalList) {
+            msg += `🔥 **БИТВА ЗА ВОГНИК:**\n${criticalList}\n`;
+        }
+
+        if (brokenList) {
+            msg += `💀 **БОРГОВА ЯМА:**\n${brokenList}\n`;
+        }
+
+        msg += `\n🦾 Хлопці, кидайте відео! Не чекайте ночі.`;
+
+        await ctx.reply(msg, { parse_mode: 'Markdown' });
+
+    } catch (e) {
+        console.error(e);
+        ctx.reply("❌ Помилка при розсилці нагадування.");
+    }
+});
+
 // --- 7. ЗАПУСК ---
 bot.launch();
 console.log(`🚀 Бот стартує в режимі: ${testMode ? 'TEST' : 'PRODUCTION'}`);
