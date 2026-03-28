@@ -216,47 +216,52 @@ bot.command('remind', async (ctx) => {
         const targetToday = getTargetToday();
         const users = await User.find();
 
-        // 1. Фільтруємо тих, хто ще не здав сьогодні (боржники)
         const debtors = users.filter(u => u.completed < daysPassed);
 
         if (debtors.length === 0) {
-            return ctx.reply("😎 **Всі красунчики!** Сьогодні боржників немає. Всі вогники на місці.");
+            return ctx.reply("😎 **Всі при ділі!** Боржників нуль, вогники горять. Від душі, пацани!");
         }
 
-        let msg = `🔔 **ЗАГАЛЬНЕ НАГАДУВАННЯ**\n`;
-        msg += `⏱ Ціль на сьогодні: **${targetToday} сек**\n`;
+        let msg = `📣 **ЗБІР ПО ТРИВОЗІ**\n`;
+        msg += `⏱ План на сьогодні: **${targetToday} сек**\n`;
         msg += `--------------------------\n\n`;
 
-        let criticalList = ""; // Ті, хто ось-ось втратять вогник (diff === 1)
-        let brokenList = "";   // Ті, хто вже боржники (diff >= 2)
+        let ironList = "";    // Останній шанс (борг 1 день)
+        let debtList = "";    // Звичайний борг (2-4 дні)
+        let heavyDebtList = ""; // Жорсткий борг (5+ днів)
 
         debtors.forEach(u => {
             const diff = daysPassed - u.completed;
-            // Створюємо клікабельне ім'я (тег) через userId
-            const userTag = `[${u.name || 'Анонім'}](tg://user?id=${u.userId})`;
+            const userTag = `[${u.name || 'Тіп'}](tg://user?id=${u.userId})`;
 
-            if (diff >= 2) {
-                brokenList += `🔻 ${userTag} — борг ${diff} дн. (Вогник 🔥 втрачено)\n`;
+            if (diff >= 5) {
+                heavyDebtList += `💀 ${userTag} — борг **${diff} дн.** (Повна яма)\n`;
+            } else if (diff >= 2) {
+                debtList += `🔻 ${userTag} — борг ${diff} дн. (Вогник 🔥 потух)\n`;
             } else if (diff === 1) {
-                criticalList += `⚠️ ${userTag} — **ОСТАННІЙ ШАНС** зберегти вогник!\n`;
+                ironList += `⚠️ ${userTag} — рішай зараз, бо завтра без вогника!\n`;
             }
         });
 
-        if (criticalList) {
-            msg += `🔥 **БИТВА ЗА ВОГНИК:**\n${criticalList}\n`;
+        if (ironList) {
+            msg += `🔥 **БИТВА ЗА ВОГНИКИ:**\n${ironList}\n`;
         }
 
-        if (brokenList) {
-            msg += `💀 **БОРГОВА ЯМА:**\n${brokenList}\n`;
+        if (debtList) {
+            msg += `📉 **СПИСОК ШТРАФНИКІВ:**\n${debtList}\n`;
         }
 
-        msg += `\n🦾 Хлопці, кидайте відео! Не чекайте ночі.`;
+        if (heavyDebtList) {
+            msg += `🚨 **ЖОРСТКІ ЗАВАЛИ (5+ днів):**\n${heavyDebtList}\n`;
+        }
+
+        msg += `\nДавайте, челікі, підтягуйте хвости. Чекаємо відоси! 👇`;
 
         await ctx.reply(msg, { parse_mode: 'Markdown' });
 
     } catch (e) {
         console.error(e);
-        ctx.reply("❌ Помилка при розсилці нагадування.");
+        ctx.reply("❌ Бот шось тупить, не зміг нагадати.");
     }
 });
 
