@@ -10,7 +10,7 @@ const { sendReply, getGopStyleInsult } = require('./utils/replies');
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = false; // Змінюй на false для продакшену
+const testMode = true; // Змінюй на false для продакшену
  
 const { token, mongoUri } =  testMode ? 
 { token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
@@ -44,38 +44,43 @@ bot.on(['video', 'video_note'], async (ctx) => {
         // Визначаємо, чи є борг 2+ дні на момент завантаження
         const isCurrentlyDebtor = (daysPassed - currentCompleted) >= 2;
 
-        const saveProgress = async (sec) => {
-            // Визначаємо новий стрік: якщо борг — починаємо з 1, якщо ні — інкрементуємо існуючий
-            let newStreak = user && !isCurrentlyDebtor ? (user.currentStreak || 0) + 1 : 1;
-            
-            const update = {
-                $set: { 
-                    name: userName,
-                    currentStreak: newStreak
-                },
-                $inc: { 
-                    completed: 1, 
-                    totalSeconds: sec
-                }
-            };
-            
-            // Якщо людина завантажує відео з боргом — мітка Broken назавжди
-            if (isCurrentlyDebtor || (user && user.isBroken)) {
-                update.$set.isBroken = true;
-            }
+const saveProgress = async (sec) => {
+    const target = getTargetToday();
+    let restoreSuccess = false;
 
-            const updated = await User.findOneAndUpdate(
-                { userId },
-                update,
-                { upsert: true, new: true }
-            );
+    // ЛОГІКА ВІДНОВЛЕННЯ ВОГНИКА
+    if (user && user.isBroken && user.canRestore) {
+        if (sec >= target + 10) {
+            restoreSuccess = true;
+        }
+    }
 
-            // Оновлюємо рекорд
-            if (updated.currentStreak > (updated.maxStreak || 0)) {
-                await User.updateOne({ userId: updated.userId }, { $set: { maxStreak: updated.currentStreak } });
-            }
-            return updated;
-        };
+    let newStreak = user && !isCurrentlyDebtor ? (user.currentStreak || 0) + 1 : 1;
+    
+    const update = {
+        $set: { 
+            name: userName,
+            currentStreak: newStreak,
+            canRestore: false // Скидаємо прапорець спроби в будь-якому випадку
+        },
+        $inc: { 
+            completed: 1, 
+            totalSeconds: sec
+        }
+    };
+    
+    // Якщо борг зараз — Broken. Якщо був Broken і НЕ виконав челендж — залишається Broken.
+    if (isCurrentlyDebtor || (user && user.isBroken && !restoreSuccess)) {
+        update.$set.isBroken = true;
+    } else if (restoreSuccess) {
+        update.$set.isBroken = false; // ПОВЕРТАЄМО ВОГНИК!
+    }
+
+    // Решта коду без змін...
+    const updated = await User.findOneAndUpdate({ userId }, update, { upsert: true, new: true });
+    // ...
+    return { updated, restoreSuccess };
+};
 
         const diff = Math.abs(duration - target);
 
@@ -263,6 +268,36 @@ bot.command('remind', async (ctx) => {
         console.error(e);
         ctx.reply("❌ Бот шось тупить, не зміг нагадати.");
     }
+});
+
+bot.command('challenge', async (ctx) => {
+    const userId = ctx.from.id;
+    let user = await User.findOne({ userId });
+
+    if (!user || !user.isBroken) {
+        return ctx.reply("😎 У тебе і так все чітко! Твій вогник горить, челендж не потрібен.");
+    }
+
+    const msg = `👊 **ЧЕЛЕНДЖ НА ПОВЕРНЕННЯ ВОГНИКА**\n\n` +
+                `Ти колись пропустив дні, і твій стрік став "холодним" (🦾).\n` +
+                `Щоб повернути статус 🔥, тобі потрібно виконати додаткове завдання:\n` +
+                `**Записати відео на 10 секунд довше сьогоднішньої цілі!**\n\n` +
+                `Бажаєш спробувати?`;
+
+    await ctx.reply(msg, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: "✅ Я в справі!", callback_data: 'accept_challenge' }]
+            ]
+        }
+    });
+});
+
+bot.action('accept_challenge', async (ctx) => {
+    await User.updateOne({ userId: ctx.from.id }, { $set: { canRestore: true } });
+    await ctx.answerCbQuery();
+    await ctx.editMessageText("🚀 Прийнято! Тепер твій наступний звіт має бути на 10 сек довшим за план. Чекаю відос!");
 });
 
 // --- 7. ЗАПУСК ---
