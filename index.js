@@ -10,7 +10,7 @@ const { sendReply, getGopStyleInsult } = require('./utils/replies');
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = true; // Змінюй на false для продакшену
+const testMode = false; // Змінюй на false для продакшену
  
 const { token, mongoUri } =  testMode ? 
 { token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
@@ -203,9 +203,9 @@ bot.command('guide', (ctx) => {
 
     🔻 — Позначка боржника. З’являється, якщо ти відстав від графіка на 2+ дні.
 
-    Стрік: 6 🔥 — Означає, що ти молодець і йдеш без критичних затримок.
+    Стрік: 8 🔥 — Означає, що ти молодець і йдеш без критичних затримок.
     
-    Стрік: 6 (без вогника) — Означає, що ти наздогнав групу, але колись уже "грішив" із пропусками.
+    Стрік: 8 (без вогника) — Означає, що ти наздогнав групу, але колись уже "грішив" із пропусками.
     `;
 
         ctx.reply(rulesMsg, { parse_mode: 'Markdown' });
