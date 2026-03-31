@@ -85,7 +85,7 @@ const saveProgress = async (sec) => {
         const diff = Math.abs(duration - target);
 
         if (diff <= 5 || duration >= target) {
-            const updatedUser = await saveProgress(duration);
+            const {updated: updatedUser} = await saveProgress(duration);
             const statusMsg = duration >= target ? `🔥 Ого, машина! Перевиконав план.` : `✅ Красава! Чітко в таймінг.`;
             
             // Визначаємо, чи виводити вогник у повідомленні про успіх
