@@ -44,43 +44,45 @@ bot.on(['video', 'video_note'], async (ctx) => {
         // Визначаємо, чи є борг 2+ дні на момент завантаження
         const isCurrentlyDebtor = (daysPassed - currentCompleted) >= 2;
 
-const saveProgress = async (sec) => {
-    const target = getTargetToday();
-    let restoreSuccess = false;
+        const saveProgress = async (sec) => {
+            const target = getTargetToday();
+            let restoreSuccess = false;
 
-    // ЛОГІКА ВІДНОВЛЕННЯ ВОГНИКА
-    if (user && user.isBroken && user.canRestore) {
-        if (sec >= target + 10) {
-            restoreSuccess = true;
-        }
-    }
+            // ЛОГІКА ВІДНОВЛЕННЯ ВОГНИКА
+            if (user && user.isBroken && user.canRestore) {
+                if (sec >= target + 10) {
+                    restoreSuccess = true;
+                }
+            }
 
-    let newStreak = user && !isCurrentlyDebtor ? (user.currentStreak || 0) + 1 : 1;
-    
-    const update = {
-        $set: { 
-            name: userName,
-            currentStreak: newStreak,
-            canRestore: false // Скидаємо прапорець спроби в будь-якому випадку
-        },
-        $inc: { 
-            completed: 1, 
-            totalSeconds: sec
-        }
-    };
-    
-    // Якщо борг зараз — Broken. Якщо був Broken і НЕ виконав челендж — залишається Broken.
-    if (isCurrentlyDebtor || (user && user.isBroken && !restoreSuccess)) {
-        update.$set.isBroken = true;
-    } else if (restoreSuccess) {
-        update.$set.isBroken = false; // ПОВЕРТАЄМО ВОГНИК!
-    }
+            let newStreak = user && !isCurrentlyDebtor ? (user.currentStreak || 0) + 1 : 1;
+            const newMaxStreak = Math.max(user?.maxStreak || 0, newStreak);
+            
+            const update = {
+                $set: { 
+                    name: userName,
+                    currentStreak: newStreak,
+                    maxStreak: newMaxStreak,
+                    canRestore: false // Скидаємо прапорець спроби в будь-якому випадку
+                },
+                $inc: { 
+                    completed: 1, 
+                    totalSeconds: sec
+                }
+            };
+            
+            // Якщо борг зараз — Broken. Якщо був Broken і НЕ виконав челендж — залишається Broken.
+            if (isCurrentlyDebtor || (user && user.isBroken && !restoreSuccess)) {
+                update.$set.isBroken = true;
+            } else if (restoreSuccess) {
+                update.$set.isBroken = false; // ПОВЕРТАЄМО ВОГНИК!
+            }
 
-    // Решта коду без змін...
-    const updated = await User.findOneAndUpdate({ userId }, update, { upsert: true, new: true });
-    // ...
-    return { updated, restoreSuccess };
-};
+            // Решта коду без змін...
+            const updated = await User.findOneAndUpdate({ userId }, update, { upsert: true, new: true });
+            // ...
+            return { updated, restoreSuccess };
+        };
 
         const diff = Math.abs(duration - target);
 
