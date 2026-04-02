@@ -11,7 +11,7 @@ const { getRandomChallenge } = require('./utils/challenges');
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = true; // Змінюй на false для продакшену
+const testMode = false; // Змінюй на false для продакшену
  
 const { token, mongoUri } =  testMode ? 
 { token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
@@ -101,7 +101,7 @@ bot.on(['video', 'video_note'], async (ctx) => {
             }
 
             // 2. ФОРМУВАННЯ СТАТУСУ
-            const statusMsg = duration >= target ? `🔥 Ого, машина! Перевиконав план.` : `✅ Красава! Чітко в таймінг.`;
+            const statusMsg = duration >= target ? `🔥 Ого, машина! Перевиконав план (+${duration - target} сек).` : `✅ Красава! Чітко в таймінг.`;
             const fireIcon = updatedUser.isBroken ? '🦾' : '🔥';
             
             const finalMsg = `${statusMsg}${challengeText}\n\n` +
