@@ -14,7 +14,10 @@ const userSchema = new mongoose.Schema({
     activeChallenge: { type: String, default: null },
 
     // ID повідомлення з голосуванням (допоможе боту зрозуміти, за кого голосують)
-    activePollId: { type: String, default: null }
+    activePollId: { type: String, default: null },
+
+    //Персональна таймазона для тих хто в різних часових поясах
+    timezone: { type: String, default: 'Europe/Kyiv' }
 
 });
 

@@ -22,6 +22,7 @@
   "homepage": "https://github.com/zamoox/plankabot30#readme",
   "dependencies": {
     "dotenv": "^17.3.1",
+    "luxon": "^3.7.2",
     "mongoose": "^9.3.1",
     "node-cron": "^4.2.1",
     "telegraf": "^4.16.3"
