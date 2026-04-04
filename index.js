@@ -3,7 +3,8 @@ require('dotenv').config();
 const startServer = require('./server');
 const User = require('./models/User');
 const connectDB = require('./config/db');
-const { getDaysPassed, getTargetToday } = require('./utils/dates');
+const { getUserContext } = require('./utils/userContext');
+const { getUserDaysPassed, getTargetForToday } = require('./utils/dates');
 const { sendReply, getGopStyleInsult } = require('./utils/replies');
 const { getRandomChallenge } = require('./utils/challenges');
 
@@ -11,33 +12,35 @@ const { getRandomChallenge } = require('./utils/challenges');
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = false; // Змінюй на false для продакшену
+const testMode = true; // Змінюй на false для продакшену
  
+// 3. ОТРИМАННЯ ТОКЕНУ БОТА ТА БАЗИ ДАНИХ
 const { token, mongoUri } =  testMode ? 
 { token: process.env.TEST_BOT_TOKEN, mongoUri: process.env.TEST_MONGO_URI} :
 { token: process.env.BOT_TOKEN, mongoUri: process.env.MONGO_URI};
 
 connectDB(mongoUri);
 
+// 4. ІНІЦІАЛІЗАЦІЯ БОТА
 const bot = new Telegraf(token);
 
 // --- 5. ОБРОБКА ВІДЕО ---
 bot.on(['video', 'video_note'], async (ctx) => {
     try {
-        const video = ctx.message.video || ctx.message.video_note;
-        const duration = video.duration; 
-        const target = getTargetToday(); 
-        const daysPassed = getDaysPassed();
         const userId = ctx.from.id;
         const userName = ctx.from.first_name || 'Анонім';
+
+        const { user, target, daysPassed } = await getUserContext(userId, userName);
+
+        const video = ctx.message.video || ctx.message.video_note;
+        const duration = video.duration; 
+
 
         if (duration < 30) {
             return sendReply(ctx, `🤬 ${getGopStyleInsult()} (${duration} сек — це несерйозно)`);
         }
 
-        let user = await User.findOne({ userId });
         const currentCompleted = user ? user.completed : 0;
-
         const isDoingChallenge = user && user.canRestore;
 
         if (currentCompleted >= daysPassed && !isDoingChallenge) {
@@ -48,8 +51,6 @@ bot.on(['video', 'video_note'], async (ctx) => {
         const isCurrentlyDebtor = (daysPassed - currentCompleted) >= 2;
 
         const saveProgress = async (sec) => {
-            const daysPassed = getDaysPassed();
-            const isChallenge = user && user.canRestore;
             // Розрахунок стріку (якщо борг — 1, якщо вчасно — +1)
             let newStreak = user && !isCurrentlyDebtor ? (user.currentStreak || 0) + 1 : 1;
             const newMaxStreak = Math.max(user?.maxStreak || 0, newStreak);
@@ -62,7 +63,6 @@ bot.on(['video', 'video_note'], async (ctx) => {
                     isBroken: isCurrentlyDebtor || (user?.isBroken ?? false)
                 },
                 $inc: { 
-                    // КЛЮЧОВИЙ ФІКС: 
                     // Додаємо +1 день ТІЛЬКИ якщо сьогоднішній план ще НЕ був закритий.
                     // Якщо план закритий (наприклад, челендж здається окремо) — додаємо 0.
                     completed: (user?.completed || 0) >= daysPassed ? 0 : 1, 
@@ -70,8 +70,7 @@ bot.on(['video', 'video_note'], async (ctx) => {
                 }
             };
         
-            const updated = await User.findOneAndUpdate({ userId }, update, { upsert: true, new: true });
-            return { updated };
+            return await User.findOneAndUpdate({ userId }, update, { upsert: true, new: true });
         };
 
         const diff = Math.abs(duration - target);
@@ -128,15 +127,18 @@ bot.on(['video', 'video_note'], async (ctx) => {
 
 bot.command('stats', async (ctx) => {
     try {
-        const daysPassed = getDaysPassed();
-        const targetToday = getTargetToday();
+        const daysPassed = getUserDaysPassed('Europe/Kyiv');
+        const targetToday = getTargetForToday(daysPassed);
         
         let users = await User.find();
 
         // --- ПЕРЕВІРКА НА "ДРОП" СТРІКУ ---
         // Якщо настав новий день, а борг не закрито — обнуляємо стрік і забираємо вогник
         for (let u of users) {
+            const userTZ = u.timezone || 'Europe/Kyiv';
+            const personalDays = getUserDaysPassed(userTZ);
             const diff = daysPassed - u.completed;
+
             if (diff >= 2 && (u.currentStreak > 0 || !u.isBroken)) {
                 await User.updateOne(
                     { _id: u._id }, 
@@ -150,8 +152,12 @@ bot.command('stats', async (ctx) => {
 
         // Сортування: не-боржники вище, далі за секундами
         users.sort((a, b) => {
-            const aIsDebtor = (daysPassed - a.completed) >= 2;
-            const bIsDebtor = (daysPassed - b.completed) >= 2;
+            const aDiff = getUserDaysPassed(a.timezone || 'Europe/Kyiv') - a.completed;
+            const bDiff = getUserDaysPassed(b.timezone || 'Europe/Kyiv') - b.completed;
+            
+            const aIsDebtor = aDiff >= 2;
+            const bIsDebtor = bDiff >= 2;
+
             if (aIsDebtor && !bIsDebtor) return 1;
             if (!aIsDebtor && bIsDebtor) return -1;
             return b.totalSeconds - a.totalSeconds;
@@ -165,14 +171,15 @@ bot.command('stats', async (ctx) => {
             msg += "Поки що ніхто не здав відео.";
         } else {
             users.forEach((u, i) => {
-                const diff = daysPassed - u.completed;
+                const userTZ = u.timezone || 'Europe/Kyiv';
+                const personalDays = getUserDaysPassed(userTZ);
+                const diff = personalDays - u.completed;
                 const isTodayDebtor = diff >= 2;
                 
                 // Стрік з вогником тільки якщо не Broken
                 const streakVal = u.currentStreak || 0;
                 const streakFire = !u.isBroken ? ` ${streakVal} 🔥` : ` ${streakVal}`;
                 
-                let icon = '👤';
                 if (isTodayDebtor) {
                     icon = '🔻';
                 } else {
@@ -184,7 +191,7 @@ bot.command('stats', async (ctx) => {
                 const statusText = isTodayDebtor ? ` *(Борг: ${diff} дн.)*` : '';
                 
                 msg += `${icon} **${u.name || 'Анонім'}**${statusText}\n`;
-                msg += `└ Днів: ${u.completed}/${daysPassed} | Рекорд: ${u.maxStreak || 0} | Стрік:${streakFire}\n`;
+                msg += `└ Днів: ${u.completed}/${personalDays} | Рекорд: ${u.maxStreak || 0} | Стрік:${streakFire}\n`;
                 msg += `└ Всього: *${u.totalSeconds} сек.*\n\n`;
             });
         }
@@ -201,7 +208,7 @@ bot.command('stats', async (ctx) => {
 // --- КОМАНДА ПРАВИЛ ---
 bot.command('guide', (ctx) => {
     try {
-        const targetToday = getTargetToday();
+        const targetToday = getTargetForToday();
         
         const rulesMsg = `
 🥋 *ГАЙД ПО ЧЕЛЕНДЖУ*
@@ -240,50 +247,52 @@ bot.command('guide', (ctx) => {
 
 bot.command('remind', async (ctx) => {
     try {
-        const daysPassed = getDaysPassed();
-        const targetToday = getTargetToday();
         const users = await User.find();
 
-        const debtors = users.filter(u => u.completed < daysPassed);
+        const daysPassed = getUserDaysPassed('Europe/Kyiv');
+        const targetToday = getTargetForToday(daysPassed);
 
-        if (debtors.length === 0) {
-            return ctx.reply("😎 **Всі при ділі!** Боржників нуль, вогники горять. Від душі, пацани!");
-        }
+        let ironList = '';
+        let debtList = '';
+        let heavyDebtList = '';
+        let hasAnyDebtor = false;
 
-        let msg = `📣 **ЗБІР ПО ТРИВОЗІ**\n`;
-        msg += `⏱ План на сьогодні: **${targetToday} сек**\n`;
-        msg += `--------------------------\n\n`;
+        users.forEach(u => {
 
-        let ironList = "";    // Останній шанс (борг 1 день)
-        let debtList = "";    // Звичайний борг (2-4 дні)
-        let heavyDebtList = ""; // Жорсткий борг (5+ днів)
+            const userTZ = u.timezone || 'Europe/Kyiv';
+            const personalDays = getUserDaysPassed(userTZ);
 
-        debtors.forEach(u => {
-            const diff = daysPassed - u.completed;
+            const diff = personalDays - u.completed;
+            
             const userTag = `[${u.name || 'Тіп'}](tg://user?id=${u.userId})`;
 
-            if (diff >= 5) {
-                heavyDebtList += `💀 ${userTag} — борг **${diff} дн.** (Повна яма)\n`;
-            } else if (diff >= 2) {
-                debtList += `🔻 ${userTag} — борг ${diff} дн. (Вогник 🔥 потух)\n`;
-            } else if (diff === 1) {
-                ironList += `⚠️ ${userTag} — рішай зараз, бо завтра без вогника!\n`;
+            if (diff >= 1) {
+                hasAnyDebtor = true;
+                const userTag = `[${u.name || 'Атлет'}](tg://user?id=${u.userId})`;
+
+                if (diff >= 5) {
+                    heavyDebtList += `💀 ${userTag} — борг **${diff} дн.** (Повна яма)\n`;
+                } else if (diff >= 2) {
+                    debtList += `🔻 ${userTag} — борг ${diff} дн. (Вогник 🔥 потух)\n`;
+                } else if (diff === 1) {
+                    ironList += `⚠️ ${userTag} — сьогодні дедлайн, або прощавай вогник!\n`;
+                }
             }
         });
 
-        if (ironList) {
-            msg += `🔥 **БИТВА ЗА ВОГНИКИ:**\n${ironList}\n`;
+        if (!hasAnyDebtor) {
+            return ctx.reply("😎 **Всі красунчики!** Боржників немає, вогники горять. Від душі!");
         }
 
-        if (debtList) {
-            msg += `📉 **СПИСОК ШТРАФНИКІВ:**\n${debtList}\n`;
-        }
+        let msg = `📣 **ЗБІР ПО ТРИВОЗІ**\n`;
+        msg += `⏱ План на сьогодні: **${targetToday} сек** \n`;
+        msg += `--------------------------\n\n`;
 
-        if (heavyDebtList) {
-            msg += `🚨 **ЖОРСТКІ ЗАВАЛИ (5+ днів):**\n${heavyDebtList}\n`;
-        }
+        if (ironList) msg += `🔥 **БИТВА ЗА ВОГНИКИ:**\n${ironList}\n`;
+        if (debtList) msg += `📉 **СПИСОК ШТРАФНИКІВ:**\n${debtList}\n`;
+        if (heavyDebtList) msg += `🚨 **ЖОРСТКІ ЗАВАЛИ:**\n${heavyDebtList}\n`;
 
-        msg += `\nДавайте, челікі, підтягуйте хвости. Чекаємо відоси! 👇`;
+        msg += `\nПідтягуйте хвости, пацани! Чекаємо відоси! 👇`;
 
         await ctx.reply(msg, { parse_mode: 'Markdown' });
 
@@ -295,7 +304,7 @@ bot.command('remind', async (ctx) => {
 
 bot.command('challenge', async (ctx) => {
     const userId = ctx.from.id;
-    const daysPassed = getDaysPassed();
+    const daysPassed = getUserDaysPassed();
     let user = await User.findOne({ userId });
 
     if (!user || !user.isBroken) {
