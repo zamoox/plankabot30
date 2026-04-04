@@ -181,6 +181,7 @@ bot.command('stats', async (ctx) => {
                 const streakVal = u.currentStreak || 0;
                 const streakFire = !u.isBroken ? ` ${streakVal} 🔥` : ` ${streakVal}`;
                 
+                let icon = '🙇‍♂️'
                 if (isTodayDebtor) {
                     icon = '🔻';
                 } else {
