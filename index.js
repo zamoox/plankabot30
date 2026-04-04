@@ -7,12 +7,13 @@ const { getUserContext } = require('./utils/userContext');
 const { getUserDaysPassed, getTargetForToday } = require('./utils/dates');
 const { sendReply, getGopStyleInsult } = require('./utils/replies');
 const { getRandomChallenge } = require('./utils/challenges');
+const { commands } = require('./utils/texts');
 
 // 1. ІНІЦІАЛІЗАЦІЯ СЕРВЕРУ
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = true; // Змінюй на false для продакшену
+const testMode = false; // Змінюй на false для продакшену
  
 // 3. ОТРИМАННЯ ТОКЕНУ БОТА ТА БАЗИ ДАНИХ
 const { token, mongoUri } =  testMode ? 
@@ -208,37 +209,7 @@ bot.command('stats', async (ctx) => {
 // --- КОМАНДА ПРАВИЛ ---
 bot.command('guide', (ctx) => {
     try {
-        const targetToday = getTargetForToday();
-        
-        const rulesMsg = `
-🥋 *ГАЙД ПО ЧЕЛЕНДЖУ*
-
-1. *План на сьогодні:* — вистояти *${targetToday} сек*.
-    Кожного дня ціль зростає на **+5 сек**.
-
-2. *Як надсилати відео: 🎥*
-    Якщо план *до 60 сек* — можна записувати звичайний "кружечок".
-    Якщо план *більше 60 сек* — надсилай **звичайне відео**, бо Телеграм обрізає "кружечки" на першій хвилині.
-
-3. *Твій статус (🔥):*
-    Поки ти здаєш звіти вчасно — вогник з тобою.
-    Якщо ти раз стаєш боржником — вогник зникає назавжди. 
-
-4. *Пропустив день?*
-    Не біда! Ти можеш скинути кілька відео за один вечір, щоб наздогнати групу. Бот прийматиме твої звіти, поки ти не вийдеш на сьогоднішній графік.
-
-Позначення:
-
-    🥇/🥈/🥉 — Трійка лідерів, про них ходять легенди найбільше часу.
-
-    🔻 — Позначка боржника. З’являється, якщо ти відстав від графіка на 2+ дні.
-
-    Стрік: 8 🔥 — Означає, що ти молодець і йдеш без критичних затримок.
-    
-    Стрік: 8 (без вогника) — Означає, що ти наздогнав групу, але колись уже "грішив" із пропусками.
-    `;
-
-        ctx.reply(rulesMsg, { parse_mode: 'Markdown' });
+        ctx.reply(commands.guide, { parse_mode: 'HTML' });
     } catch (e) {
         console.error("Помилка в rules:", e);
         ctx.reply("❌ Не вдалося завантажити правила.");
