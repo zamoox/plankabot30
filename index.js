@@ -31,7 +31,7 @@ bot.on(['video', 'video_note'], async (ctx) => {
         const userId = ctx.from.id;
         const userName = ctx.from.first_name || 'Анонім';
 
-        const { user, target, daysPassed } = await getUserContext(userId, userName);
+        const { user, personalTarget, personalDay } = await getUserContext(userId, userName);
 
         const video = ctx.message.video || ctx.message.video_note;
         const duration = video.duration; 
@@ -44,12 +44,12 @@ bot.on(['video', 'video_note'], async (ctx) => {
         const currentCompleted = user ? user.completed : 0;
         const isDoingChallenge = user && user.canRestore;
 
-        if (currentCompleted >= daysPassed && !isDoingChallenge) {
-            return sendReply(ctx, `✋ Гальмуй, ${userName}! План на сьогодні вже виконано (${currentCompleted}/${daysPassed} дн.).`);
+        if (currentCompleted >= personalDay && !isDoingChallenge) {
+            return sendReply(ctx, `✋ Гальмуй, ${userName}! План на сьогодні вже виконано (${currentCompleted}/${personalDay} дн.).`);
         }
 
         // Визначаємо, чи є борг 2+ дні на момент завантаження
-        const isCurrentlyDebtor = (daysPassed - currentCompleted) >= 2;
+        const isCurrentlyDebtor = (personalDay - currentCompleted) >= 2;
 
         const saveProgress = async (sec) => {
             // Розрахунок стріку (якщо борг — 1, якщо вчасно — +1)
@@ -66,17 +66,18 @@ bot.on(['video', 'video_note'], async (ctx) => {
                 $inc: { 
                     // Додаємо +1 день ТІЛЬКИ якщо сьогоднішній план ще НЕ був закритий.
                     // Якщо план закритий (наприклад, челендж здається окремо) — додаємо 0.
-                    completed: (user?.completed || 0) >= daysPassed ? 0 : 1, 
+                    completed: (user?.completed || 0) >= personalDay ? 0 : 1, 
                     totalSeconds: sec
                 }
             };
         
-            return await User.findOneAndUpdate({ userId }, update, { upsert: true, new: true });
+            const updatedDoc = await User.findOneAndUpdate({ userId }, update, { upsert: true, new: true });
+            return {updated: updatedDoc};
         };
 
-        const diff = Math.abs(duration - target);
+        const diff = Math.abs(duration - personalTarget);
 
-        if (diff <= 5 || duration >= target) {
+        if (diff <= 5 || duration >= personalTarget) {
             const { updated: updatedUser } = await saveProgress(duration);
             
             let challengeText = "";
@@ -84,7 +85,7 @@ bot.on(['video', 'video_note'], async (ctx) => {
 
             // 1. ЛОГІКА ЧЕЛЕНДЖУ
             if (updatedUser.canRestore && updatedUser.activeChallenge) {
-                if (updatedUser.completed >= daysPassed) {
+                if (updatedUser.completed >= personalDay) {
                     // Формуємо блок голосування
                     challengeText = `\n\n🥁 ЗВІТ-ЧЕЛЕНДЖ ЗА СЬОГОДНІ!\n\nЗавдання: "${updatedUser.activeChallenge}"\n\nДаємо вогник для ${userName}🔥?!`;
                     extraMarkup = {
@@ -101,11 +102,11 @@ bot.on(['video', 'video_note'], async (ctx) => {
             }
 
             // 2. ФОРМУВАННЯ СТАТУСУ
-            const statusMsg = duration >= target ? `🔥 Ого, машина! Перевиконав план (+${duration - target} сек).` : `✅ Красава! Чітко в таймінг.`;
+            const statusMsg = duration >= personalTarget ? `🔥 Ого, машина! Перевиконав план (+${duration - personalTarget} сек).` : `✅ Красава! Чітко в таймінг.`;
             const fireIcon = updatedUser.isBroken ? '🦾' : '🔥';
             
             const finalMsg = `${statusMsg}${challengeText}\n\n` +
-                            `📊 Результат: ${updatedUser.completed}/${daysPassed} дн.\n` +
+                            `📊 Результат: ${updatedUser.completed}/${personalDay} дн.\n` +
                             `⚡️ Стрік: ${updatedUser.currentStreak} ${fireIcon} | Всього: ${updatedUser.totalSeconds} сек.`;
 
             // 3. ВІДПРАВКА (Одним повідомленням)
@@ -116,7 +117,7 @@ bot.on(['video', 'video_note'], async (ctx) => {
             });
 
         } else {
-            sendReply(ctx, `⚠️ Малувато! Треба було ${target} сек, а в тебе ${duration}. Не халяв!`);
+            sendReply(ctx, `⚠️ Малувато! Треба було ${personalTarget} сек, а в тебе ${duration}. Не халяв!`);
         }
     } catch (e) {
         console.error('Помилка при збереженні відео:', e);

@@ -1,14 +1,14 @@
-const { User } = require('../models/User');
-const { getDaysPassed, getTargetToday } = require('./dates');
+const User = require('../models/User');
+const { getUserDaysPassed, getTargetForToday } = require('./dates');
 
 const getUserContext = async (userId, userName = 'Анонім') => {
     const user = await User.findOne({ userId });
 
     const timezone = user?.timezone || 'Europe/Kyiv';
 
-    const personalDay = getDaysPassed(timezone);
+    const personalDay = getUserDaysPassed(timezone);
 
-    const personalTarget = getTargetToday(personalDay);
+    const personalTarget = getTargetForToday(personalDay);
 
     return { 
         user, 
