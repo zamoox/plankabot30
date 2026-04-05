@@ -7,7 +7,7 @@ const { getUserContext } = require('./utils/userContext');
 const { getUserDaysPassed, getTargetForToday } = require('./utils/dates');
 const { sendReply, getGopStyleInsult } = require('./utils/replies');
 const { getRandomChallenge } = require('./utils/challenges');
-const { commands } = require('./utils/texts');
+const { COMMANDS } = require('./utils/texts');
 
 // 1. ІНІЦІАЛІЗАЦІЯ СЕРВЕРУ
 startServer();
@@ -211,7 +211,7 @@ bot.command('stats', async (ctx) => {
 // --- КОМАНДА ПРАВИЛ ---
 bot.command('guide', (ctx) => {
     try {
-        ctx.reply(commands.guide, { parse_mode: 'HTML' });
+        ctx.reply(COMMANDS.guide, { parse_mode: 'HTML' });
     } catch (e) {
         console.error("Помилка в rules:", e);
         ctx.reply("❌ Не вдалося завантажити правила.");
