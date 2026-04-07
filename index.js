@@ -13,7 +13,7 @@ const { COMMANDS } = require('./utils/messages');
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = true; // Змінюй на false для продакшену
+const testMode = false; // Змінюй на false для продакшену
  
 // 3. ОТРИМАННЯ ТОКЕНУ БОТА ТА БАЗИ ДАНИХ
 const { token, mongoUri } =  testMode ? 
@@ -192,7 +192,6 @@ bot.command('stats', async (ctx) => {
 // --- КОМАНДА ПРАВИЛ ---
 bot.command('guide', (ctx) => {
     try {
-        console.log(COMMANDS);
         ctx.reply(COMMANDS.guide.text, { parse_mode: 'HTML' });
     } catch (e) {
         console.error("Помилка в rules:", e);
