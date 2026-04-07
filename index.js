@@ -7,13 +7,13 @@ const { getUserContext } = require('./utils/userContext');
 const { getUserDaysPassed, getTargetForToday } = require('./utils/dates');
 const { sendReply, getGopStyleInsult } = require('./utils/replies');
 const { getRandomChallenge } = require('./utils/challenges');
-const { COMMANDS } = require('./utils/texts');
+const { COMMANDS } = require('./utils/messages');
 
 // 1. ІНІЦІАЛІЗАЦІЯ СЕРВЕРУ
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = false; // Змінюй на false для продакшену
+const testMode = true; // Змінюй на false для продакшену
  
 // 3. ОТРИМАННЯ ТОКЕНУ БОТА ТА БАЗИ ДАНИХ
 const { token, mongoUri } =  testMode ? 
@@ -165,42 +165,23 @@ bot.command('stats', async (ctx) => {
             return b.totalSeconds - a.totalSeconds;
         });
 
-        let msg = `🏆 **ТАБЛИЦЯ ЛІДЕРІВ** (День ${daysPassed})\n`;
-        msg += `⏱ Ціль: **${targetToday} сек**\n`;
-        msg += `--------------------------\n`;
+        let msg = COMMANDS.stats.statsHeader(daysPassed, targetToday);
 
         if (users.length === 0) {
-            msg += "Поки що ніхто не здав відео.";
+            msg += COMMANDS.stats.noStats;
         } else {
-            users.forEach((u, i) => {
-                const userTZ = u.timezone || 'Europe/Kyiv';
+            users.forEach((user, position) => {
+                const userTZ = user.timezone || 'Europe/Kyiv';
                 const personalDays = getUserDaysPassed(userTZ);
-                const diff = personalDays - u.completed;
-                const isTodayDebtor = diff >= 2;
-                
-                // Стрік з вогником тільки якщо не Broken
-                const streakVal = u.currentStreak || 0;
-                const streakFire = !u.isBroken ? ` ${streakVal} 🔥` : ` ${streakVal}`;
-                
-                let icon = '🙇‍♂️'
-                if (isTodayDebtor) {
-                    icon = '🔻';
-                } else {
-                    if (i === 0) icon = '🥇';
-                    else if (i === 1) icon = '🥈';
-                    else if (i === 2) icon = '🥉';
-                }
+                const diff = personalDays - user.completed;
+                const isDebtor = diff >= 2;
 
-                const statusText = isTodayDebtor ? ` *(Борг: ${diff} дн.)*` : '';
-                
-                msg += `${icon} **${u.name || 'Анонім'}**${statusText}\n`;
-                msg += `└ Днів: ${u.completed}/${personalDays} | Рекорд: ${u.maxStreak || 0} | Стрік:${streakFire}\n`;
-                msg += `└ Всього: *${u.totalSeconds} сек.*\n\n`;
+                msg += COMMANDS.stats.userInfo(user, position, isDebtor, diff, personalDays)
             });
         }
 
         const prefix = typeof testMode !== 'undefined' && testMode ? '🛠 [TEST MODE]\n' : '';
-        await ctx.reply(prefix + msg, { parse_mode: 'Markdown' });
+        await ctx.reply(prefix + msg, { parse_mode: 'HTML' });
 
     } catch (e) {
         console.error(e);
@@ -211,7 +192,8 @@ bot.command('stats', async (ctx) => {
 // --- КОМАНДА ПРАВИЛ ---
 bot.command('guide', (ctx) => {
     try {
-        ctx.reply(COMMANDS.guide, { parse_mode: 'HTML' });
+        console.log(COMMANDS);
+        ctx.reply(COMMANDS.guide.text, { parse_mode: 'HTML' });
     } catch (e) {
         console.error("Помилка в rules:", e);
         ctx.reply("❌ Не вдалося завантажити правила.");
@@ -288,20 +270,11 @@ bot.command('challenge', async (ctx) => {
     if (user.completed + 1 < daysPassed) {
         const debt = daysPassed - user.completed - 1;
         const word = debt === 1 ? 'звіт' : (debt < 5 ? 'звіти' : 'звітів');
-        return ctx.reply(
-            `⚠️ Доступ заблоковано!\n\n` +
-            `Ти не можеш повернути вогник, поки маєш борги. \n` +
-            `Тобі треба здати ${debt} ${word}, щоб наздогнати групу. \n\n` +
-            `Здай борги, і тоді приходь за челенджем! 👊`
-        );
+        return ctx.reply(COMMANDS.challenge.locked);
     }
 
     // Дозволяємо активувати, якщо сьогодні ще НЕ здано (або якщо є невеликий борг)
-    const msg = `👊 **ЧЕЛЕНДЖ НА ПОВЕРНЕННЯ ВОГНИКА**\n\n` +
-                `Ти можеш повернути вогник 🔥 прямо зараз!\n` +
-                `Твій сьогоднішній звіт буде зараховано як спецзавдання.\n\n` +
-                `👉 Тобі випаде рандомний треш-челендж. Виконаєш його під час планки — вогник повернеться.\n\n` +
-                `Ризикнеш?`;
+    const msg = COMMANDS.challenge.intro;
 
     await ctx.reply(msg, {
         parse_mode: 'Markdown',
