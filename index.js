@@ -139,7 +139,7 @@ bot.command('stats', async (ctx) => {
         for (let u of users) {
             const userTZ = u.timezone || 'Europe/Kyiv';
             const personalDays = getUserDaysPassed(userTZ);
-            const diff = daysPassed - u.completed;
+            const diff = personalDays - u.completed;
 
             if (diff >= 2 && (u.currentStreak > 0 || !u.isBroken)) {
                 await User.updateOne(
