@@ -7,7 +7,7 @@ const { getUserContext } = require('./utils/userContext');
 const { getUserDaysPassed, getTargetForToday } = require('./utils/dates');
 const { sendReply, getGopStyleInsult } = require('./utils/replies');
 const { getRandomChallenge } = require('./utils/challenges');
-const { COMMANDS } = require('./utils/messages');
+const { MESSAGES } = require('./utils/messages');
 
 // 1. ІНІЦІАЛІЗАЦІЯ СЕРВЕРУ
 startServer();
@@ -165,10 +165,10 @@ bot.command('stats', async (ctx) => {
             return b.totalSeconds - a.totalSeconds;
         });
 
-        let msg = COMMANDS.stats.statsHeader(daysPassed, targetToday);
+        let msg = MESSAGES.stats.statsHeader(daysPassed, targetToday);
 
         if (users.length === 0) {
-            msg += COMMANDS.stats.noStats;
+            msg += MESSAGES.stats.noStats;
         } else {
             users.forEach((user, position) => {
                 const userTZ = user.timezone || 'Europe/Kyiv';
@@ -176,7 +176,7 @@ bot.command('stats', async (ctx) => {
                 const diff = personalDays - user.completed;
                 const isDebtor = diff >= 2;
 
-                msg += COMMANDS.stats.userInfo(user, position, isDebtor, diff, personalDays)
+                msg += MESSAGES.stats.userInfo(user, position, isDebtor, diff, personalDays)
             });
         }
 
@@ -192,7 +192,7 @@ bot.command('stats', async (ctx) => {
 // --- КОМАНДА ПРАВИЛ ---
 bot.command('guide', (ctx) => {
     try {
-        ctx.reply(COMMANDS.guide.text, { parse_mode: 'HTML' });
+        ctx.reply(MESSAGES.guide.text, { parse_mode: 'HTML' });
     } catch (e) {
         console.error("Помилка в rules:", e);
         ctx.reply("❌ Не вдалося завантажити правила.");
@@ -262,23 +262,23 @@ bot.command('challenge', async (ctx) => {
     let user = await User.findOne({ userId });
 
     if (!user || !user.isBroken) {
-        return ctx.reply("😎 Твій вогник і так горить! Челендж не потрібен.");
+        return ctx.reply(MESSAGES.challenge.notNeeded);
     }
 
     // ГОЛОВНА ПЕРЕВІРКА: чи є борг на цей момент
     if (user.completed + 1 < daysPassed) {
         const debt = daysPassed - user.completed - 1;
         const word = debt === 1 ? 'звіт' : (debt < 5 ? 'звіти' : 'звітів');
-        return ctx.reply(COMMANDS.challenge.locked);
+        return ctx.reply(MESSAGES.challenge.locked);
     }
 
     // Дозволяємо активувати, якщо сьогодні ще НЕ здано (або якщо є невеликий борг)
-    const msg = COMMANDS.challenge.intro;
+    const msg = MESSAGES.challenge.intro;
 
     await ctx.reply(msg, {
         parse_mode: 'Markdown',
         reply_markup: {
-            inline_keyboard: [[{ text: "🚀 Погнали!", callback_data: 'accept_challenge' }]]
+            inline_keyboard: [[{ text: MESSAGES.challenge.go, callback_data: 'accept_challenge' }]]
         }
     });
 });
@@ -289,7 +289,7 @@ bot.action('accept_challenge', async (ctx) => {
     await User.updateOne({ userId: ctx.from.id }, { $set: { canRestore: true, activeChallenge: challenge } });
     
     await ctx.answerCbQuery();
-    await ctx.editMessageText(`🚀 Прийнято! Твоє спецзавдання:\n\n👉 ${challenge}\n\nЗнімай відео, скидай сюди, а далі — суд громади!`);
+    await ctx.editMessageText(MESSAGES.challenge.accept(challenge));
 });
 
 bot.action(/vote_(yes|no)_(\d+)/, async (ctx) => {
@@ -298,13 +298,13 @@ bot.action(/vote_(yes|no)_(\d+)/, async (ctx) => {
     const voterId = ctx.from.id;
 
     // 1. Не даємо голосувати самому за себе
-    if (voterId == targetUserId) {
-        return ctx.answerCbQuery("😂 Nah Man! За себе голосувати не можна. Нехай громада вирішує!", { show_alert: true });
-    }
+    // if (voterId == targetUserId) {
+    //     return ctx.answerCbQuery(MESSAGES.challenge.blockVote, { show_alert: true });
+    // }
 
     const user = await User.findOne({ userId: targetUserId });
     if (!user || !user.canRestore) {
-        return ctx.answerCbQuery("Голосування вже неактуальне.");
+        return ctx.answerCbQuery(MESSAGES.challenge.votingNotActive);
     }
 
     // 2. Логіка підрахунку голосів (через текст повідомлення)
@@ -314,7 +314,7 @@ bot.action(/vote_(yes|no)_(\d+)/, async (ctx) => {
     if (action === 'yes') {
         yesCount++;
         
-        if (yesCount >= 3) {
+        if (yesCount >= 1) {
             // ПЕРЕМОГА! Відновлюємо вогник
             await User.updateOne(
                 { userId: targetUserId }, 
@@ -327,18 +327,18 @@ bot.action(/vote_(yes|no)_(\d+)/, async (ctx) => {
                     }
                 }
             );
-            await ctx.editMessageText(`🔥 **ВОГНИК ПОВЕРНУТО!**\n\nГромада схвалила виконання ${user.name}. Машина!`);
+            await ctx.editMessageText(MESSAGES.challenge.win(user.name));
             return ctx.answerCbQuery("Рішення прийнято! 🔥");
         } else {
             // Оновлюємо лічильник у повідомленні
             await ctx.editMessageText(text + "\n✅", ctx.callbackQuery.message.reply_markup);
-            return ctx.answerCbQuery("Твій голос враховано!");
+            return ctx.answerCbQuery(MESSAGES.challenge.count);
         }
     } else {
         // Якщо хтось один натиснув "❌ Халява" — челендж провалено (або можна теж лічильник)
         await User.updateOne({ userId: targetUserId }, { $set: { canRestore: false, activeChallenge: null } });
-        await ctx.editMessageText(`🦾 **ЧЕЛЕНДЖ ВІДХИЛЕНО.**\n\nГромада відчула халяву. Вогник залишається холодним.`);
-        return ctx.answerCbQuery("Спроба анульована.");
+        await ctx.editMessageText(MESSAGES.challenge.loss);
+        return ctx.answerCbQuery(MESSAGES.challenge.cancelAttempt);
     }
 });
 
