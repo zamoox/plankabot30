@@ -1,6 +1,49 @@
 const { ICON, FOOTER } = require('./helpers');
 
+// Функція-обгортка для відповідей (додає префікс у тесті)
+const sendReply = (ctx, text, extra = {}) => {
+    // Виправляємо помилку: якщо extra не об'єкт (наприклад, Markdown), обробляємо це
+    const options = typeof extra === 'string' ? { parse_mode: extra } : extra;
+    return ctx.reply(text, { parse_mode: 'Markdown', ...options });
+};
+
 const MESSAGES = {
+    video: {
+        getGopStyleInsult: () => {
+            const phrases = [
+                "Чуєш, ти шо, на приколі? Де решта секунд? 🤨",
+                "Слишиш, це шо за фізкультура для малят?",
+                "Ти кому це фуфло впарюєш? Навіть 30 сек не було — не пацан!",
+                "Шось ти слабо газуєш, дядя. Сімки-вісімки не канають!"
+            ];
+            return phrases[Math.floor(Math.random() * phrases.length)];
+        },
+
+        tooShort: (sec) => `🤬 ${MESSAGES.video.getGopStyleInsult()} (${sec} сек — це несерйозно)`,
+
+        alreadyDone: (name, comp, day) => `✋ Гальмуй, ${name}! План на сьогодні вже виконано (${comp}/${day} дн.).`,
+
+        almost: (sec, target) => `${ICON.WARN} Малувато буде! Треба було ${target} сек, а в тебе ${sec}. Не халяв!`,
+        
+        successHigh: (sec, target) => `${ICON.FIRE} Ого, машина! Перевиконав план (+${sec - target} сек).`,
+        
+        successOk: `✅ Красава! Чітко в таймінг.`,
+
+        icon: (isBroken) => isBroken ? '🦾' : '🔥',
+
+        statusMessage: (sec, target) => sec >= target ? MESSAGES.video.successHigh(sec, target) : MESSAGES.video.successOk,
+
+        tooLow: (target, sec) => `${ICON.WARN} Малувато! Треба було ${target} сек, а в тебе ${sec}.`,
+
+        statsSuffix: (comp, day, streak, icon, total) => 
+            `${ICON.STAT} Результат: ${comp}/${day} дн.\n${ICON.BOLT} Стрік: ${streak} ${icon} | Всього: *${total} сек.*`,
+
+        finalMsg: (user, personalDay, duration, target) => `${MESSAGES.video.statusMessage(duration, target)}${user.activeChallenge || ''}\n\n` +
+                            `📊 Результат: ${user.completed}/${personalDay} дн.\n` +
+                            `⚡️ Стрік: ${user.currentStreak} ${MESSAGES.video.icon(user.isBroken)} | Всього: ${user.totalSeconds} сек.`,
+
+        error: "❌ Сталася помилка при збереженні відео. Можливо, потрібно оновити схему бази даних.",
+    },
     stats: {
         statsHeader: (day, target) => 
             `🏆 <b>ТАБЛИЦЯ ЛІДЕРІВ</b> (День ${day})\n${ICON.TARGET} Ціль: <b>${target} сек</b>\n--------------------------\n`,
@@ -79,7 +122,7 @@ const MESSAGES = {
 
         loss: `${ICON.BROKEN} <b>ЧЕЛЕНДЖ ВІДХИЛЕНО.</b> Громада відчула халяву.`,
         
-        debtStillExists: `\n\n${ICON.DEBTOR} Ти все ще боржник, вогник не повернуто.`,
+        debtStillExists: `\n\n${ICON.WARN} Оскільки ти все ще боржник, вогник не повернуто. Здавай далі!`,
 
         votingNotActive: "Голосування вже неактуальне.",
 
@@ -91,5 +134,6 @@ const MESSAGES = {
 }
 
 module.exports = {
-    MESSAGES
+    MESSAGES,
+    sendReply 
 };

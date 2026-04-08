@@ -6,7 +6,8 @@ const ICON = {
     TARGET: '⏱',
     STAT: '📊',
     BOLT: '⚡️',
-    DEFAULT: '👤'
+    DEFAULT: '👤',
+    WARN: '⚠️',
 };
 
 const FOOTER = {

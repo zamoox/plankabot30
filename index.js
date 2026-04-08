@@ -5,9 +5,8 @@ const User = require('./models/User');
 const connectDB = require('./config/db');
 const { getUserContext } = require('./utils/userContext');
 const { getUserDaysPassed, getTargetForToday } = require('./utils/dates');
-const { sendReply, getGopStyleInsult } = require('./utils/replies');
 const { getRandomChallenge } = require('./utils/challenges');
-const { MESSAGES } = require('./utils/messages');
+const { MESSAGES, sendReply } = require('./utils/messages');
 
 // 1. ІНІЦІАЛІЗАЦІЯ СЕРВЕРУ
 startServer();
@@ -38,14 +37,14 @@ bot.on(['video', 'video_note'], async (ctx) => {
 
 
         if (duration < 30) {
-            return sendReply(ctx, `🤬 ${getGopStyleInsult()} (${duration} сек — це несерйозно)`);
+            return sendReply(ctx, MESSAGES.video.tooShort);
         }
 
         const currentCompleted = user ? user.completed : 0;
         const isDoingChallenge = user && user.canRestore;
 
         if (currentCompleted >= personalDay && !isDoingChallenge) {
-            return sendReply(ctx, `✋ Гальмуй, ${userName}! План на сьогодні вже виконано (${currentCompleted}/${personalDay} дн.).`);
+            return sendReply(ctx, MESSAGES.video.alreadyDone(userName, currentCompleted, personalDay));
         }
 
         // Визначаємо, чи є борг 2+ дні на момент завантаження
@@ -87,7 +86,7 @@ bot.on(['video', 'video_note'], async (ctx) => {
             if (updatedUser.canRestore && updatedUser.activeChallenge) {
                 if (updatedUser.completed >= personalDay) {
                     // Формуємо блок голосування
-                    challengeText = `\n\n🥁 ЗВІТ-ЧЕЛЕНДЖ ЗА СЬОГОДНІ!\n\nЗавдання: "${updatedUser.activeChallenge}"\n\nДаємо вогник для ${userName}🔥?!`;
+                    challengeText = MESSAGES.challenge.poll(updatedUser.activeChallenge, userName);
                     extraMarkup = {
                         inline_keyboard: [
                             [{ text: "✅ Гідно", callback_data: `vote_yes_${userId}` },
@@ -97,31 +96,26 @@ bot.on(['video', 'video_note'], async (ctx) => {
                 } else {
                     // Скидаємо, якщо борг лишився
                     await User.updateOne({ userId }, { $set: { canRestore: false, activeChallenge: null } });
-                    challengeText = `\n\n⚠️ Оскільки ти все ще боржник, вогник не повернуто. Здавай далі!`;
+                    challengeText = MESSAGES.challenge.debtStillExists;
                 }
             }
 
             // 2. ФОРМУВАННЯ СТАТУСУ
-            const statusMsg = duration >= personalTarget ? `🔥 Ого, машина! Перевиконав план (+${duration - personalTarget} сек).` : `✅ Красава! Чітко в таймінг.`;
-            const fireIcon = updatedUser.isBroken ? '🦾' : '🔥';
+            const finalMsg = MESSAGES.video.finalMsg(updatedUser, personalDay, duration, personalTarget)
             
-            const finalMsg = `${statusMsg}${challengeText}\n\n` +
-                            `📊 Результат: ${updatedUser.completed}/${personalDay} дн.\n` +
-                            `⚡️ Стрік: ${updatedUser.currentStreak} ${fireIcon} | Всього: ${updatedUser.totalSeconds} сек.`;
-
             // 3. ВІДПРАВКА (Одним повідомленням)
             await ctx.reply(finalMsg, { 
                 reply_to_message_id: ctx.message.message_id,
                 reply_markup: extraMarkup,
-                parse_mode: 'Markdown' 
+                parse_mode: 'HTML' 
             });
 
         } else {
-            sendReply(ctx, `⚠️ Малувато! Треба було ${personalTarget} сек, а в тебе ${duration}. Не халяв!`);
+            sendReply(ctx, MESSAGES.video.almost(duration, personalTarget));
         }
     } catch (e) {
         console.error('Помилка при збереженні відео:', e);
-        sendReply(ctx, "❌ Сталася помилка при збереженні відео. Можливо, потрібно оновити схему бази даних.");
+        sendReply(ctx, MESSAGES.video.error);
     }
 });
 
