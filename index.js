@@ -12,7 +12,7 @@ const { MESSAGES, sendReply } = require('./utils/messages');
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = false; // Змінюй на false для продакшену
+const testMode = true; // Змінюй на false для продакшену
  
 // 3. ОТРИМАННЯ ТОКЕНУ БОТА ТА БАЗИ ДАНИХ
 const { token, mongoUri } =  testMode ? 

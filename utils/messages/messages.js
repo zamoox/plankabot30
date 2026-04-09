@@ -55,6 +55,8 @@ const MESSAGES = {
 
         userStreak: (u) => (!u.isBroken ? ` ${u.currentStreak} 🔥` : ` ${u.currentStreak}`),
 
+        userFullTime: (sec) => `( ${Math.floor(sec/60)} хв ${sec - Math.floor(sec/60) * 60} сек )`,
+
         // ВИПРАВЛЕНО: Прибрано this, виправлено конкатенацію рядків
         userInfo: (user, position, isDebtor, diff, personalDays) => {
 
@@ -64,7 +66,7 @@ const MESSAGES = {
             
             return `${userIcon} <b>${user.name || 'Анонім'}</b>${debtorText}\n` +
                    `└ Днів: ${user.completed}/${personalDays} | Рекорд: ${user.maxStreak || 0} | Стрік:${userStreak}\n` +
-                   `└ Всього: <b>${user.totalSeconds} сек.</b>\n\n`;
+                   `└ Всього: <b>${user.totalSeconds} сек.</b> <i>${(MESSAGES.stats.userFullTime(user.totalSeconds))}</i>\n\n`;
         },
 
         remindHeader: (target) => 
