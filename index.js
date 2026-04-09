@@ -12,7 +12,7 @@ const { MESSAGES, sendReply } = require('./utils/messages');
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = true; // Змінюй на false для продакшену
+const testMode = false; // Змінюй на false для продакшену
  
 // 3. ОТРИМАННЯ ТОКЕНУ БОТА ТА БАЗИ ДАНИХ
 const { token, mongoUri } =  testMode ? 
@@ -292,9 +292,9 @@ bot.action(/vote_(yes|no)_(\d+)/, async (ctx) => {
     const voterId = ctx.from.id;
 
     // 1. Не даємо голосувати самому за себе
-    // if (voterId == targetUserId) {
-    //     return ctx.answerCbQuery(MESSAGES.challenge.blockVote, { show_alert: true });
-    // }
+    if (voterId == targetUserId) {
+        return ctx.answerCbQuery(MESSAGES.challenge.blockVote, { show_alert: true });
+    }
 
     const user = await User.findOne({ userId: targetUserId });
     if (!user || !user.canRestore) {
@@ -308,7 +308,7 @@ bot.action(/vote_(yes|no)_(\d+)/, async (ctx) => {
     if (action === 'yes') {
         yesCount++;
         
-        if (yesCount >= 1) {
+        if (yesCount >= 3) {
             // ПЕРЕМОГА! Відновлюємо вогник
             await User.updateOne(
                 { userId: targetUserId }, 
