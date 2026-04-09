@@ -53,7 +53,7 @@ const MESSAGES = {
 
         userDebtorText: (isDebtor, diff) => isDebtor ? ` <i>(Борг: ${diff} дн.)</i>` : '',
 
-        userStreak: (u) => (!u.isBroken ? ` ${u.currentStreak} 🔥` : ` ${u.currentStreak}`),
+        userStreak: (u) => (!u.isBroken ? ` ${u.currentStreak}🔥` : ` ${u.currentStreak}`),
 
         userFullTime: (sec) => `( ${Math.floor(sec/60)} хв ${sec - Math.floor(sec/60) * 60} с )`,
 
