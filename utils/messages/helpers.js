@@ -8,6 +8,7 @@ const ICON = {
     BOLT: '⚡️',
     DEFAULT: '👤',
     WARN: '⚠️',
+    RECORD: '🏆'
 };
 
 const FOOTER = {

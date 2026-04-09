@@ -46,7 +46,7 @@ const MESSAGES = {
     },
     stats: {
         statsHeader: (day, target) => 
-            `🏆 <b>ТАБЛИЦЯ ЛІДЕРІВ</b> (День ${day})\n${ICON.TARGET} Ціль: <b>${target} сек</b>\n--------------------------\n`,
+            `🏆 <b>ТАБЛИЦЯ ЛІДЕРІВ ( День ${day} )\n${ICON.TARGET}</b> Ціль: <b>${target} сек</b>\n--------------------------\n`,
         
         userIcon: (isDebtor, position) => isDebtor ? ICON.DEBTOR : 
             (position === 0 ? ICON.MEDALS[0] : position === 1 ? ICON.MEDALS[1] : position === 2 ? ICON.MEDALS[2] : ICON.DEFAULT),
@@ -55,7 +55,7 @@ const MESSAGES = {
 
         userStreak: (u) => (!u.isBroken ? ` ${u.currentStreak} 🔥` : ` ${u.currentStreak}`),
 
-        userFullTime: (sec) => `( ${Math.floor(sec/60)} хв ${sec - Math.floor(sec/60) * 60} сек )`,
+        userFullTime: (sec) => `( ${Math.floor(sec/60)} хв ${sec - Math.floor(sec/60) * 60} с )`,
 
         // ВИПРАВЛЕНО: Прибрано this, виправлено конкатенацію рядків
         userInfo: (user, position, isDebtor, diff, personalDays) => {
@@ -65,7 +65,7 @@ const MESSAGES = {
             const userStreak = MESSAGES.stats.userStreak(user);
             
             return `${userIcon} <b>${user.name || 'Анонім'}</b>${debtorText}\n` +
-                   `└ Днів: ${user.completed}/${personalDays} | Рекорд: ${user.maxStreak || 0} | Стрік:${userStreak}\n` +
+                   `└ Днів: ${user.completed}/${personalDays} | ${ICON.RECORD}: ${user.maxStreak || 0} | Стрік:${userStreak}\n` +
                    `└ Всього: <b>${user.totalSeconds} сек.</b> <i>${(MESSAGES.stats.userFullTime(user.totalSeconds))}</i>\n\n`;
         },
 
