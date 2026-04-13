@@ -82,6 +82,21 @@ bot.on(['video', 'video_note'], async (ctx) => {
             let challengeText = "";
             let extraMarkup = null;
 
+            const isCleanNow = (personalDay - updatedUser.completed) < 2;
+
+            if (isCurrentlyDebtor && isCleanNow && updatedUser.isBroken) {
+                console.log('fire back propose');
+                // Дозволяємо відновити вогник
+                await User.updateOne({ userId }, { $set: { canRestore: true } });
+                
+                challengeText = `\n\n${MESSAGES.challenge.offerRestore}`;
+                extraMarkup = {
+                    inline_keyboard: [
+                        [{ text: "👊 Повернути вогник", callback_data: 'accept_challenge' }]
+                    ]
+                };
+            }
+
             // 1. ЛОГІКА ЧЕЛЕНДЖУ
             if (updatedUser.canRestore && updatedUser.activeChallenge) {
                 if (updatedUser.completed >= personalDay) {
