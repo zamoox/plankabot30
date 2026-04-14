@@ -12,7 +12,7 @@ const { MESSAGES, sendReply } = require('./utils/messages');
 startServer();
 
 // 2. НАЛАШТУВАННЯ РЕЖИМУ
-const testMode = false; // Змінюй на false для продакшену
+const testMode = true; // Змінюй на false для продакшену
  
 // 3. ОТРИМАННЯ ТОКЕНУ БОТА ТА БАЗИ ДАНИХ
 const { token, mongoUri } =  testMode ? 
@@ -37,7 +37,7 @@ bot.on(['video', 'video_note'], async (ctx) => {
 
 
         if (duration < 30) {
-            return sendReply(ctx, MESSAGES.video.tooShort);
+            return sendReply(ctx, MESSAGES.video.tooShort(duration));
         }
 
         const currentCompleted = user ? user.completed : 0;
