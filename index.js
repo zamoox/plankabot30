@@ -301,51 +301,65 @@ bot.action('accept_challenge', async (ctx) => {
 });
 
 bot.action(/vote_(yes|no)_(\d+)/, async (ctx) => {
-    const action = ctx.match[1]; // 'yes' або 'no'
+    const action = ctx.match[1];
     const targetUserId = ctx.match[2];
     const voterId = ctx.from.id;
+    const voterName = ctx.from.first_name || 'Анонім';
 
-    // 1. Не даємо голосувати самому за себе
-    if (voterId == targetUserId) {
-        return ctx.answerCbQuery(MESSAGES.challenge.blockVote, { show_alert: true });
-    }
+    // 1. Захист від самострілу
+    // if (voterId == targetUserId) {
+    //     return ctx.answerCbQuery(MESSAGES.challenge.blockVote, { show_alert: true });
+    // }
 
-    const user = await User.findOne({ userId: targetUserId });
-    if (!user || !user.canRestore) {
+    const targetUser = await User.findOne({ userId: targetUserId });
+    if (!targetUser || !targetUser.canRestore) {
         return ctx.answerCbQuery(MESSAGES.challenge.votingNotActive);
     }
 
-    // 2. Логіка підрахунку голосів (через текст повідомлення)
     let text = ctx.callbackQuery.message.text;
-    let yesCount = (text.match(/✅/g) || []).length;
+
+    // 2. Перевірка, чи цей юзер вже голосував (шукаємо його ім'я в тексті)
+    if (text.includes(voterName)) {
+        return ctx.answerCbQuery("Ти вже залишив свій голос! 😉", { show_alert: false });
+    }
 
     if (action === 'yes') {
-        yesCount++;
-        
-        if (yesCount >= 3) {
-            // ПЕРЕМОГА! Відновлюємо вогник
+        // Рахуємо поточну кількість ✅
+        let yesCount = (text.match(/✅/g) || []).length + 1;
+        const VOTE_THRESHOLD = 3; 
+
+        if (yesCount >= VOTE_THRESHOLD) {
+            // ФІНАЛ: Відновлення стріку
+            const potentialStreak = (targetUser.maxStreak || 0) + 1;
+            const restoredStreak = Math.min(potentialStreak, targetUser.completed);
+
             await User.updateOne(
                 { userId: targetUserId }, 
-                { 
-                    $set: { 
-                        isBroken: false,
-                        canRestore: false,
-                        activePollId: null,
-                        activeChallenge: null,
-                    }
-                }
+                { $set: { 
+                    isBroken: false, 
+                    canRestore: false, 
+                    activeChallenge: null, 
+                    currentStreak: restoredStreak,
+                    maxStreak: Math.max(targetUser.maxStreak, restoredStreak)
+                }}
             );
-            await ctx.editMessageText(MESSAGES.challenge.win(user.name));
-            return ctx.answerCbQuery("Рішення прийнято! 🔥");
+            
+            await ctx.editMessageText(MESSAGES.challenge.win(targetUser.name, restoredStreak), { parse_mode: 'HTML' });
+            return ctx.answerCbQuery("Рішення прийнято! Вогник горить! 🔥");
         } else {
-            // Оновлюємо лічильник у повідомленні
-            await ctx.editMessageText(text + "\n✅", ctx.callbackQuery.message.reply_markup);
-            return ctx.answerCbQuery(MESSAGES.challenge.count);
+            // ПРОМІЖНИЙ ЕТАП: Додаємо ✅ та ім'я того, хто проголосував
+            const updatedText = text + `\n✅ ${voterName}`;
+            
+            await ctx.editMessageText(updatedText, {
+                reply_markup: ctx.callbackQuery.message.reply_markup,
+                parse_mode: 'HTML'
+            });
+            return ctx.answerCbQuery(MESSAGES.challenge.countVote);
         }
     } else {
-        // Якщо хтось один натиснув "❌ Халява" — челендж провалено (або можна теж лічильник)
+        // ВІДХИЛЕНО: Один голос "Проти" скасовує все (або можна теж зробити лічильник)
         await User.updateOne({ userId: targetUserId }, { $set: { canRestore: false, activeChallenge: null } });
-        await ctx.editMessageText(MESSAGES.challenge.loss);
+        await ctx.editMessageText(MESSAGES.challenge.loss + `\n(Скасовано: ${voterName} ❌)`, { parse_mode: 'HTML' });
         return ctx.answerCbQuery(MESSAGES.challenge.cancelAttempt);
     }
 });
