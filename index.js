@@ -277,7 +277,7 @@ bot.command('challenge', async (ctx) => {
     if (user.completed + 1 < daysPassed) {
         const debt = daysPassed - user.completed - 1;
         const word = debt === 1 ? 'звіт' : (debt < 5 ? 'звіти' : 'звітів');
-        return ctx.reply(MESSAGES.challenge.locked);
+        return ctx.reply(MESSAGES.challenge.locked(debt, word));
     }
 
     // Дозволяємо активувати, якщо сьогодні ще НЕ здано (або якщо є невеликий борг)
