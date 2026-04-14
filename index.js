@@ -35,7 +35,6 @@ bot.on(['video', 'video_note'], async (ctx) => {
         const video = ctx.message.video || ctx.message.video_note;
         const duration = video.duration; 
 
-
         if (duration < 30) {
             return sendReply(ctx, MESSAGES.video.tooShort(duration));
         }
