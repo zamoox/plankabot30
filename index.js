@@ -307,9 +307,9 @@ bot.action(/vote_(yes|no)_(\d+)/, async (ctx) => {
     const voterName = ctx.from.first_name || 'Анонім';
 
     // 1. Захист від самострілу
-    // if (voterId == targetUserId) {
-    //     return ctx.answerCbQuery(MESSAGES.challenge.blockVote, { show_alert: true });
-    // }
+    if (voterId == targetUserId) {
+        return ctx.answerCbQuery(MESSAGES.challenge.blockVote, { show_alert: true });
+    }
 
     const targetUser = await User.findOne({ userId: targetUserId });
     if (!targetUser || !targetUser.canRestore) {
